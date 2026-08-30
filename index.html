@@ -1583,7 +1583,7 @@
         }
 
         /* ========== 响应式优化：平板和电脑端 ========== */
-        @media (min-width: 768px) {
+        @media (min-width: 900px) {
             .app-shell { max-width: 1100px; padding: 24px 20px 120px; }
             /* 客源/盘源列表：电脑端两栏 */
             #cusList, #proList {
@@ -1594,19 +1594,7 @@
             #cusList .item-card,
             #proList .item-card { margin: 0; }
             /* 弹窗加宽 */
-            .gs-preview-box { max-width: 640px !important; }
-            .gs-preview-box .gs-rows {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 4px 20px;
-            }
-            .gs-preview-box .gs-rows .gs-row-full { grid-column: 1 / -1; }
-            /* 表单两栏 */
-            .form-grid-2 {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 12px 16px;
-            }
+            #gsPreviewBox { max-width: 640px !important; }
             /* 底部导航加宽居中 */
             .bottom-nav { max-width: 1100px; left: 50%; transform: translateX(-50%); }
             /* 字体稍大 */
@@ -1614,21 +1602,44 @@
             .item-name { font-size: 16px; }
         }
 
-        @media (min-width: 1024px) {
+        @media (min-width: 1200px) {
             .app-shell { max-width: 1280px; }
             #cusList, #proList {
                 grid-template-columns: 1fr 1fr 1fr;
                 gap: 16px;
             }
-            .gs-preview-box { max-width: 720px !important; }
+            #gsPreviewBox { max-width: 720px !important; }
             .bottom-nav { max-width: 1280px; }
         }
 
-        /* 手机端优化：确保不溢出 */
-        @media (max-width: 480px) {
-            .app-shell { padding: 16px 12px 100px; }
+        /* 手机端优化：确保占满宽度，不溢出 */
+        @media (max-width: 899px) {
+            .app-shell {
+                width: 100%;
+                max-width: 100%;
+                padding: 16px 12px 100px;
+                box-sizing: border-box;
+            }
             .item-card { border-radius: 12px; }
-            .gs-preview-box { margin: 10px; max-height: 92vh; }
+            #gsPreviewBox { margin: 10px; max-height: 92vh; }
+            /* 备份统计行：确保文字不竖排 */
+            .backup-stat .row {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .backup-stat .k {
+                flex-shrink: 0;
+                min-width: 80px;
+                white-space: normal;
+                word-break: keep-all;
+            }
+            .backup-stat .v {
+                flex: 1;
+                text-align: right;
+                word-break: break-all;
+            }
         }
     </style>
 </head>
