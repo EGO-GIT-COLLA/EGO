@@ -6483,11 +6483,28 @@ async function githubBackupNow(silent) {
         const msg = `备份数据 ${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
         const body = { message: msg, content: content, branch: branch };
         if (sha) body.sha = sha;
-        const resp = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+        let resp = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
             method: 'PUT',
             headers: { 'Authorization': `token ${cfg.token}`, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json', 'User-Agent': 'property-helper' },
             body: JSON.stringify(body)
         });
+        // SHA 冲突重试：重新获取最新 SHA 再传一次
+        if (!resp.ok && resp.status === 409) {
+            try {
+                const r2 = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`, {
+                    headers: { 'Authorization': `token ${cfg.token}`, 'Accept': 'application/vnd.github+json', 'User-Agent': 'property-helper' }
+                });
+                if (r2.ok) {
+                    const d2 = await r2.json();
+                    body.sha = d2.sha;
+                    resp = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+                        method: 'PUT',
+                        headers: { 'Authorization': `token ${cfg.token}`, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json', 'User-Agent': 'property-helper' },
+                        body: JSON.stringify(body)
+                    });
+                }
+            } catch (e) {}
+        }
         if (resp.ok) {
             localStorage.setItem(GH_LAST_BACKUP_KEY, String(Date.now()));
             updateGhUI();
