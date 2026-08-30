@@ -3607,6 +3607,125 @@ function cusPreview(id) {
         ]
     });
 }
+/* 相似房源推荐：基于价格、面积、类型、标签匹配 */
+function similarPropertiesHtml(p, opts) {
+    if (!p) return '';
+    const all = loadProperties().filter(x => x.id !== p.id);
+    if (all.length === 0) return '';
+    const topN = (opts && typeof opts.topN === 'number') ? opts.topN : 5;
+    const pPrice = Number(p.totalPriceWan ?? p.price) || 0;
+    const pSize = Number(p.area ?? p.size) || 0;
+    const pType = p.type ? String(p.type) : '';
+    const pTags = new Set(p.tags || []);
+    const scored = all.map(x => {
+        let score = 0;
+        let reasons = [];
+        // 价格相近（±30% 内加分）
+        const xPrice = Number(x.totalPriceWan ?? x.price) || 0;
+        if (pPrice > 0 && xPrice > 0) {
+            const diff = Math.abs(xPrice - pPrice) / pPrice;
+            if (diff <= 0.1) { score += 35; reasons.push('价格接近'); }
+            else if (diff <= 0.2) { score += 20; reasons.push('价格相近'); }
+            else if (diff <= 0.3) { score += 10; }
+        }
+        // 面积相近（±30% 内加分）
+        const xSize = Number(x.area ?? x.size) || 0;
+        if (pSize > 0 && xSize > 0) {
+            const diff = Math.abs(xSize - pSize) / pSize;
+            if (diff <= 0.1) { score += 25; reasons.push('面积接近'); }
+            else if (diff <= 0.2) { score += 15; reasons.push('面积相近'); }
+            else if (diff <= 0.3) { score += 8; }
+        }
+        // 物业类型相同
+        if (pType && x.type && String(x.type) === pType) {
+            score += 15;
+            reasons.push(`同${pType}`);
+        }
+        // 标签重合
+        const xTags = x.tags || [];
+        const common = xTags.filter(t => pTags.has(t));
+        if (common.length > 0) {
+            score += Math.min(common.length * 5, 25);
+            reasons.push(`标签重合${common.length}个`);
+        }
+        return { property: x, score, reasons };
+    }).filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, topN);
+    if (scored.length === 0) return '';
+    const itemsHtml = scored.map(m => {
+        const p = m.property;
+        const priceWan = Number(p.totalPriceWan ?? p.price);
+        const priceStr = (!isNaN(priceWan) && priceWan > 0) ? ` · ${escapeHTML(fmtWan(priceWan))}` : '';
+        const sizeNum = Number(p.area ?? p.size);
+        const sizeStr = (!isNaN(sizeNum) && sizeNum > 0) ? ` · ${sizeNum.toLocaleString('zh-CN')}㎡` : '';
+        const reasonStr = m.reasons.slice(0, 3).map(r => `<span class="match-tag hit">✓ ${escapeHTML(r)}</span>`).join('');
+        return `
+            <div class="match-pro-item" onclick="event.stopPropagation(); closeGsPreview(); proPreview('${escapeHTML(p.id)}');">
+                <div class="match-pro-head">
+                    <div class="match-title"><strong>${escapeHTML(p.title || '未命名盘源')}</strong>${priceStr}${sizeStr}</div>
+                    <div class="match-badge ${m.score >= 70 ? 'match-badge-90' : m.score >= 45 ? 'match-badge-75' : 'match-badge-60'}">相似度 ${m.score}</div>
+                </div>
+                <div class="match-pro-tags">${reasonStr}</div>
+            </div>
+        `;
+    }).join('');
+    return `
+        <div class="match-pro-block" onclick="event.stopPropagation();">
+            <div class="match-pro-title">🔍 相似盘源推荐</div>
+            ${itemsHtml}
+        </div>
+    `;
+}
+
+/* 房源预览弹窗 */
+function proPreview(id) {
+    const p = loadProperties().find(x => x.id === id);
+    if (!p) return;
+    // 点开查看也标记"最近活跃"
+    if (!p.pinnedAt || (Date.now() - p.pinnedAt) > 30000) {
+        try {
+            const all = loadProperties();
+            const cur = all.find(x => x.id === id);
+            if (cur) { cur.pinnedAt = Date.now(); saveProperties(all); }
+        } catch (e) {}
+    }
+    const title = escapeHTML(p.title || '（未填写标题）');
+    const tags = (p.tags && p.tags.length) ? p.tags.map(t => `<span class="chip chip-a">#${escapeHTML(t)}</span>`).join('') : '<span style="color:var(--text-hint);">无</span>';
+    const imgs = Array.isArray(p.images) ? p.images.filter(Boolean) : [];
+    const imgHtml = imgs.length > 0 ? _gsImgBlockHtml(imgs, p.id, 'property') : '';
+    const priceWan = Number(p.totalPriceWan ?? p.price);
+    const sizeNum = Number(p.area ?? p.size);
+    const up = unitPrice(p.totalPriceWan ?? p.price, p.area ?? p.size);
+    const rorPct = rateOfReturnPct(p);
+    const yrWan = yearlyRentWanOf(p);
+    const rows = [
+        ['总价', (!isNaN(priceWan) && priceWan > 0) ? fmtWan(priceWan) + ' 元' : '未填'],
+        ['面积', (!isNaN(sizeNum) && sizeNum > 0) ? sizeNum.toLocaleString('zh-CN') + ' ㎡' : '未填'],
+        ['单价', up ? up.toLocaleString('zh-CN') + ' 元/㎡' : '-'],
+        ['物业类型', p.type || ''],
+        ['户型', p.layout || ''],
+        ['地址', p.address || ''],
+        ['年租金', (!isNaN(yrWan) && yrWan > 0) ? yrWan.toLocaleString('zh-CN', {maximumFractionDigits:2}) + ' 万元' : '未填'],
+        ['年回报率', (!isNaN(rorPct) && rorPct > 0) ? rorPct.toFixed(2) + '%' : '-'],
+        ['维护人', p.owner || ''],
+        ['电话', p.phone || ''],
+        ['标签', tags, true],
+        ['备注', p.note || ''],
+        ['更新时间', p.updatedAt ? new Date(p.updatedAt).toLocaleString('zh-CN') : '']
+    ];
+    _gsShowModal({
+        icon: '🏠',
+        title: title,
+        badge: '盘源概览',
+        topImage: imgHtml,
+        rows,
+        postInfo: similarPropertiesHtml(p, { topN: 5 }),
+        actions: [
+            { label: '✏️ 编辑', cls: 'btn-ghost', style: 'color:#d4af37;border-color:#d4af37;', onClick: `closeGsPreview(); editProperty('${p.id}')` },
+            { label: '🗑️ 删除', cls: 'btn-ghost', style: 'color:#dc5050;border-color:#dc5050;', onClick: `closeGsPreview(); deleteProperty('${p.id}')` }
+        ]
+    });
+}
+
 function _gsRemoveModal() {
     const m = document.getElementById('gsPreviewMask');
     if (m) m.remove();
@@ -5142,7 +5261,7 @@ function propertyCardHtml(p) {
             <span class="rate-badge">📈 <span class="rate-pct">${rorPct.toFixed(2)}</span>&#37;</span>
         </div>`;
     return `
-        <div class="item-card ${imgs.length > 0 ? 'has-side-cover' : ''}" data-prop-id="${p.id}" onclick="editProperty('${p.id}')">
+        <div class="item-card ${imgs.length > 0 ? 'has-side-cover' : ''}" data-prop-id="${p.id}" onclick="proPreview('${p.id}')">
             <div class="card-main">
                 <div class="item-head">
                     <div class="item-name">${escapeHTML(p.title)}</div>
