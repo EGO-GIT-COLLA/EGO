@@ -6463,8 +6463,14 @@ async function githubBackupNow(silent) {
     if (!silent && hint) { hint.style.display = 'block'; hint.textContent = '⏳ 正在备份到 GitHub...'; }
     try {
         const data = backupCollect();
+        // 检查是否有实际数据
+        const hasData = data[CUS_STORAGE] || data[PRO_STORAGE];
+        if (!hasData && !silent) {
+            if (!confirm('当前本地没有客源/盘源数据，备份将是空文件，确定继续吗？')) return;
+        }
         const json = JSON.stringify(data, null, 2);
-        const content = btoa(unescape(encodeURIComponent(json)));
+        // 安全的 UTF-8 base64 编码
+        const content = btoa(String.fromCharCode(...new TextEncoder().encode(json)));
         const [owner, repo] = cfg.repo.split('/');
         const branch = cfg.branch || 'main';
         const path = cfg.path || 'backup/data.json';
@@ -6541,7 +6547,11 @@ async function githubRestore() {
             throw new Error(`HTTP ${resp.status}`);
         }
         const d = await resp.json();
-        const content = decodeURIComponent(escape(atob(d.content)));
+        if (!d.content || d.content === '') {
+            throw new Error('备份文件为空，请先备份一次');
+        }
+        // 安全的 UTF-8 base64 解码
+        const content = new TextDecoder().decode(Uint8Array.from(atob(d.content), c => c.charCodeAt(0)));
         let data;
         try {
             data = JSON.parse(content);
