@@ -1943,7 +1943,11 @@
                 </div>
                 <div id="authLoggedIn" style="display:none;">
                     <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px;">
-                        <img id="authAvatarBig" src="" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--border);background:#eee;flex-shrink:0;">
+                        <div style="position:relative;flex-shrink:0;cursor:pointer;" onclick="document.getElementById('authAvatarBigFile').click()" title="点击更换头像">
+                            <img id="authAvatarBig" src="" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--border);background:#eee;">
+                            <div style="position:absolute;bottom:0;right:0;width:20px;height:20px;background:var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;border:2px solid var(--bg);">📷</div>
+                        </div>
+                        <input type="file" id="authAvatarBigFile" accept="image/*" style="display:none;" onchange="authOnAvatarBigFile(event)">
                         <div style="flex:1;min-width:0;">
                             <div id="authUserNickBig" style="font-size:15px;font-weight:600;color:var(--text);word-break:break-all;">-</div>
                             <div id="authUserEmailBig" style="font-size:12px;color:var(--text-hint);word-break:break-all;margin-top:2px;">-</div>
@@ -1952,6 +1956,19 @@
                     <div class="backup-stat">
                         <div class="row"><span class="k">手机号</span><span class="v" id="authUserPhone">-</span></div>
                         <div class="row"><span class="k">数据桶标识</span><span class="v" id="authUserKey" style="font-size:11px;word-break:break-all;">-</span></div>
+                        <div class="row">
+                            <span class="k">☁️ 自动同步</span>
+                            <span class="v" style="display:flex;align-items:center;gap:8px;">
+                                <label style="position:relative;display:inline-block;width:42px;height:22px;cursor:pointer;">
+                                    <input type="checkbox" id="autoSyncToggle" style="opacity:0;width:0;height:0;" onchange="toggleAutoSync(this.checked)">
+                                    <span id="autoSyncSlider" style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background-color:var(--border);border-radius:22px;transition:.3s;">
+                                        <span style="position:absolute;height:16px;width:16px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s;"></span>
+                                    </span>
+                                </label>
+                                <span id="autoSyncLabel" style="font-size:12px;color:var(--text-hint);">已开启</span>
+                            </span>
+                        </div>
+                        <div class="row"><span class="k">最后同步</span><span class="v" id="lastSyncTime" style="font-size:11px;">从未同步</span></div>
                         <div class="row"><span class="k">说明</span><span class="v" style="font-size:11px;color:var(--text-hint);">登录后客源按账号隔离，盘源全员共享</span></div>
                     </div>
                     <div class="backup-actions" style="margin-top:10px;">
@@ -5307,6 +5324,78 @@ const BACKUP_APP_KEY = 're_app_meta_v1';  // 应用元信息（主题等，可�
  * ======================================================= */
 const CLOUD_CONFIG_KEY = 're_cloud_config_v1';
 const CLOUD_LAST_SYNC_KEY = 're_last_cloud_sync_at';
+const AUTO_SYNC_KEY = 're_auto_sync_enabled';
+let __autoSyncTimer = null;
+
+/* 自动同步开关 */
+function isAutoSyncEnabled() {
+    try { return localStorage.getItem(AUTO_SYNC_KEY) !== 'off'; } catch (e) { return true; }
+}
+function toggleAutoSync(enabled) {
+    try { localStorage.setItem(AUTO_SYNC_KEY, enabled ? 'on' : 'off'); } catch (e) {}
+    updateAutoSyncUI();
+    if (enabled) {
+        startAutoSyncTimer();
+        cloudPullAndApplyIfNewer();
+        toast('✅ 自动同步已开启');
+    } else {
+        stopAutoSyncTimer();
+        toast('⚠️ 自动同步已关闭');
+    }
+}
+function updateAutoSyncUI() {
+    const toggle = document.getElementById('autoSyncToggle');
+    const slider = document.getElementById('autoSyncSlider');
+    const label = document.getElementById('autoSyncLabel');
+    const lastSync = document.getElementById('lastSyncTime');
+    const enabled = isAutoSyncEnabled();
+    if (toggle) toggle.checked = enabled;
+    if (slider) {
+        slider.style.backgroundColor = enabled ? 'var(--accent)' : 'var(--border)';
+        const dot = slider.querySelector('span');
+        if (dot) dot.style.transform = enabled ? 'translateX(20px)' : 'translateX(0)';
+    }
+    if (label) label.textContent = enabled ? '已开启' : '已关闭';
+    if (lastSync) {
+        const ts = Number(localStorage.getItem(CLOUD_LAST_SYNC_KEY) || 0);
+        lastSync.textContent = ts ? new Date(ts).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '从未同步';
+    }
+}
+function startAutoSyncTimer() {
+    stopAutoSyncTimer();
+    if (!isAutoSyncEnabled()) return;
+    __autoSyncTimer = setInterval(function() {
+        if (isAutoSyncEnabled() && authGetSession()) cloudPullAndApplyIfNewer();
+    }, 30000);
+}
+function stopAutoSyncTimer() {
+    if (__autoSyncTimer) { clearInterval(__autoSyncTimer); __autoSyncTimer = null; }
+}
+
+/* 已登录后更换头像 */
+async function authOnAvatarBigFile(ev) {
+    const f = ev && ev.target && ev.target.files && ev.target.files[0];
+    ev.target.value = '';
+    if (!f) return;
+    try {
+        const b64 = await compressImageToAvatar(f, 200, 0.8);
+        if (!b64) return;
+        const img = document.getElementById('authAvatarBig');
+        if (img) { img.src = b64; }
+        // 更新到用户资料
+        try {
+            await authUpdateProfile({ avatar: b64 });
+            // 更新本地 session
+            const s = authGetSession();
+            if (s && s.user) { s.user.avatar = b64; authSaveSession(s); }
+            toast('✅ 头像已更新');
+        } catch (e) {
+            toast('⚠️ 头像保存到云端失败：' + (e.message || ''));
+        }
+    } catch (e) {
+        toast('⚠️ 头像处理失败：' + (e.message || ''));
+    }
+}
 const AUTH_SESSION_KEY = 're_auth_session_v1';
 const AUTH_ROLE_KEY = 're_auth_role_v1';  // 'admin' | 'user' | null
 
@@ -5980,6 +6069,7 @@ async function authDoSignup() {
             autoLoggedIn = true;
             toast('✅ 注册成功，已自动登录');
             fetchUserRole().then(() => updateAuthUI()).catch(() => updateAuthUI());
+            updateAutoSyncUI(); startAutoSyncTimer();
             // C4：注册成功后写入头像/手机号/昵称到 Supabase metadata
             try {
                 await authUpdateProfile({
@@ -6048,6 +6138,7 @@ async function authDoSignin() {
             renderAuthCard(); renderBackupStat(); renderHeaderUser();
             // 获取用户角色（管理员/普通用户）并更新UI
             fetchUserRole().then(() => updateAuthUI()).catch(() => updateAuthUI());
+            updateAutoSyncUI(); startAutoSyncTimer();
             // C5：迁移 + 云端同步（fire-and-forget）
             cloudMigrateLocalIfNeeded().then(() => cloudRefreshAllMerge(false)).catch(() => {});
         }
@@ -6406,6 +6497,7 @@ async function cloudPullAndApplyIfNewer() {
         BACKUP_KEYS.forEach(k => { if (payload[k] != null) localStorage.setItem(k, payload[k]); });
         if (payload[BACKUP_APP_KEY] != null) localStorage.setItem(BACKUP_APP_KEY, payload[BACKUP_APP_KEY]);
         localStorage.setItem(CLOUD_LAST_SYNC_KEY, String(Date.now()));
+        updateAutoSyncUI && updateAutoSyncUI();
         renderCusTagChips && renderCusTagChips();
         renderProTagChips && renderProTagChips();
         renderCustomerList && renderCustomerList();
@@ -6421,10 +6513,13 @@ async function cloudPullAndApplyIfNewer() {
 
 /* 页面加载：更新权限UI（未登录隐藏客源tab） */
 updateAuthUI();
-/* 页面加载后立即拉取一次 + 每 30 秒定时轮询云端，保持实时状态 */
+/* 页面加载：初始化自动同步开关UI + 启动定时器 */
 (function autoCloudSyncOnLoad() {
-    cloudPullAndApplyIfNewer();
-    setInterval(cloudPullAndApplyIfNewer, 30000);
+    updateAutoSyncUI();
+    if (isAutoSyncEnabled() && authGetSession()) {
+        cloudPullAndApplyIfNewer();
+    }
+    startAutoSyncTimer();
 })();
 
 /* 兜底：加载后移除平台注入的"豆包 AI 生成"水印（CSS 已隐藏，这里彻底删除） */
