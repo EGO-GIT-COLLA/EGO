@@ -5834,7 +5834,8 @@ async function cloudRestore() {
             toast('⚠️ 云端无备份');
             return;
         }
-        const payload = rows[0].payload;
+        const row = rows[0];
+        const payload = row.payload;
         if (!payload || (!payload[CUS_STORAGE] && !payload[PRO_STORAGE])) {
             if (hint) {
                 hint.style.display = 'block';
