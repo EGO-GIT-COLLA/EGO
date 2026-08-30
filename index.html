@@ -1900,7 +1900,7 @@
             </div>
 
             <div class="sub-card" id="authCard">
-                <div class="sub-title"><span>👤 账号登录</span></div>
+                <div class="sub-title"><span>👤 账号登录</span> <span id="authRoleBadge" style="font-size:11px;color:var(--accent);margin-left:8px;display:none;"></span></div>
                 <div id="authLoggedOut">
                     <p class="backup-desc">注册/登录后，云端备份数据将绑定到你的账号。换设备登录同一账号即可恢复数据。盘源所有账号共享，客源仅自己可见。</p>
                     <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px;">
@@ -2049,7 +2049,7 @@ grant insert, update, select on sb_sync_bucket to anon;
 
         <div class="tabs" role="tablist">
             <button type="button" class="tab-btn" data-icon="📊" data-tab="calc" onclick="switchTab('calc')">回报计算</button>
-            <button type="button" class="tab-btn" data-icon="👥" data-tab="customer" onclick="switchTab('customer')">客源</button>
+            <button type="button" class="tab-btn" id="tabBtnCustomer" data-icon="👥" data-tab="customer" onclick="switchTab('customer')">客源</button>
             <button type="button" class="tab-btn active" data-icon="🔎" data-tab="search" onclick="switchTab('search')">搜索</button>
             <button type="button" class="tab-btn" data-icon="🏘️" data-tab="property" onclick="switchTab('property')">盘源</button>
             <button type="button" class="tab-btn" data-icon="💾" data-tab="backup" onclick="switchTab('backup')">备份</button>
@@ -5308,6 +5308,52 @@ const BACKUP_APP_KEY = 're_app_meta_v1';  // 应用元信息（主题等，可�
 const CLOUD_CONFIG_KEY = 're_cloud_config_v1';
 const CLOUD_LAST_SYNC_KEY = 're_last_cloud_sync_at';
 const AUTH_SESSION_KEY = 're_auth_session_v1';
+const AUTH_ROLE_KEY = 're_auth_role_v1';  // 'admin' | 'user' | null
+
+/* 权限控制：未登录隐藏客源tab，登录后显示；管理员有最高权限 */
+async function fetchUserRole() {
+    const session = authGetSession();
+    if (!session) { localStorage.removeItem(AUTH_ROLE_KEY); return null; }
+    try {
+        const cfg = cloudLoadConfig();
+        if (!cfg || !cfg.url) return null;
+        const rows = await fetch(cfg.url + '/rest/v1/profiles?id=eq.' + encodeURIComponent(session.user.id) + '&select=role', {
+            method: 'GET',
+            headers: { 'apikey': cfg.anonKey, 'Authorization': 'Bearer ' + session.access_token }
+        }).then(r => r.ok ? r.json() : []).catch(() => []);
+        const role = (Array.isArray(rows) && rows.length > 0 && rows[0].role) ? rows[0].role : 'user';
+        localStorage.setItem(AUTH_ROLE_KEY, role);
+        return role;
+    } catch (e) { return 'user'; }
+}
+function getCachedRole() {
+    try { return localStorage.getItem(AUTH_ROLE_KEY) || null; } catch (e) { return null; }
+}
+function isAdmin() { return getCachedRole() === 'admin'; }
+function updateAuthUI() {
+    const session = authGetSession();
+    const cusBtn = document.getElementById('tabBtnCustomer');
+    if (cusBtn) {
+        if (session) {
+            cusBtn.style.display = '';  // 登录后显示客源tab
+        } else {
+            cusBtn.style.display = 'none';  // 未登录隐藏客源tab
+        }
+    }
+    // 未登录时如果当前在客源tab，跳转到盘源
+    if (!session) {
+        const activePane = document.querySelector('.tab-pane.active');
+        if (activePane && activePane.id === 'tab-customer') {
+            switchTab('property');
+        }
+    }
+    // 管理员标识（在备份页账号面板显示）
+    const roleBadge = document.getElementById('authRoleBadge');
+    if (roleBadge) {
+        roleBadge.textContent = isAdmin() ? '👑 管理员（最高权限）' : '👤 普通用户';
+        roleBadge.style.display = session ? '' : 'none';
+    }
+}
 /* 预填的 Supabase 默认配置（anon key 非敏感，官方允许放前端；配合 RLS 使用）
    user_key 默认用浏览器 hostname 的 hash，保证每台设备唯一，可手动修改 */
 const CLOUD_DEFAULT_URL = 'https://dlhtcztnkaywvihknual.supabase.co';
@@ -5933,6 +5979,7 @@ async function authDoSignup() {
             });
             autoLoggedIn = true;
             toast('✅ 注册成功，已自动登录');
+            fetchUserRole().then(() => updateAuthUI()).catch(() => updateAuthUI());
             // C4：注册成功后写入头像/手机号/昵称到 Supabase metadata
             try {
                 await authUpdateProfile({
@@ -5999,6 +6046,8 @@ async function authDoSignin() {
             __authPendingAvatar = '';
             toast('✅ 登录成功，数据已绑定到此账号');
             renderAuthCard(); renderBackupStat(); renderHeaderUser();
+            // 获取用户角色（管理员/普通用户）并更新UI
+            fetchUserRole().then(() => updateAuthUI()).catch(() => updateAuthUI());
             // C5：迁移 + 云端同步（fire-and-forget）
             cloudMigrateLocalIfNeeded().then(() => cloudRefreshAllMerge(false)).catch(() => {});
         }
@@ -6020,6 +6069,8 @@ async function authDoLogout() {
         } catch (e) {}
     }
     authClearSession();
+        localStorage.removeItem(AUTH_ROLE_KEY);
+        updateAuthUI();
     toast('已退出登录');
     renderAuthCard(); renderBackupStat(); renderHeaderUser();
 }
@@ -6368,6 +6419,8 @@ async function cloudPullAndApplyIfNewer() {
     } catch (e) {}
 }
 
+/* 页面加载：更新权限UI（未登录隐藏客源tab） */
+updateAuthUI();
 /* 页面加载后立即拉取一次 + 每 30 秒定时轮询云端，保持实时状态 */
 (function autoCloudSyncOnLoad() {
     cloudPullAndApplyIfNewer();
