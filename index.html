@@ -2000,11 +2000,11 @@
                 <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px;">
                     <div>
                         <label style="font-size:12px;color:var(--text-hint);">Project URL</label>
-                        <input id="sbUrl" type="text" value="https://dlhtcztnkaywvihknual.supabase.co" placeholder="https://xxxx.supabase.co" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);padding:9px 10px;font-size:13px;margin-top:3px;">
+                        <input id="sbUrl" type="text" value="https://jqzwhjoyhayfmpsksjbb.supabase.co" placeholder="https://xxxx.supabase.co" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);padding:9px 10px;font-size:13px;margin-top:3px;">
                     </div>
                     <div>
                         <label style="font-size:12px;color:var(--text-hint);">anon public key</label>
-                        <input id="sbKey" type="text" value="sb_publishable_wGnTtz9Rg3ej3eiMiuFAew_iyEbtZzf" placeholder="eyJhbGciOi..." style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);padding:9px 10px;font-size:13px;margin-top:3px;">
+                        <input id="sbKey" type="text" value="sb_publishable_XJrYpJjWn_jyp4QVZ6KIYw_hgl8IWHm" placeholder="eyJhbGciOi..." style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);padding:9px 10px;font-size:13px;margin-top:3px;">
                     </div>
                     <div>
                         <label style="font-size:12px;color:var(--text-hint);">数据桶标识（user_key，自定义，如 my-phone-001）</label>
@@ -5468,8 +5468,8 @@ function updateAuthUI() {
 }
 /* 预填的 Supabase 默认配置（anon key 非敏感，官方允许放前端；配合 RLS 使用）
    user_key 默认用浏览器 hostname 的 hash，保证每台设备唯一，可手动修改 */
-const CLOUD_DEFAULT_URL = 'https://dlhtcztnkaywvihknual.supabase.co';
-const CLOUD_DEFAULT_ANON_KEY = 'sb_publishable_wGnTtz9Rg3ej3eiMiuFAew_iyEbtZzf';
+const CLOUD_DEFAULT_URL = 'https://jqzwhjoyhayfmpsksjbb.supabase.co';
+const CLOUD_DEFAULT_ANON_KEY = 'sb_publishable_XJrYpJjWn_jyp4QVZ6KIYw_hgl8IWHm';
 function _cloudDefaultUserKey() {
     /* 统一使用固定 user_key 'EGO'：默认 Supabase 项目已有该行且 RLS 允许更新，
        所有设备共用该 key 即可实现多设备实时云同步（避免每台设备独立 key 无法新建行）。 */
@@ -5500,6 +5500,13 @@ function cloudLoadConfig() {
     if (!cfg) {
         // 首次使用默认配置，并把默认持久化到 localStorage
         cfg = { url: CLOUD_DEFAULT_URL, anonKey: CLOUD_DEFAULT_ANON_KEY, userKey: CLOUD_DEFAULT_USER_KEY, isDefault: true };
+        try { localStorage.setItem(CLOUD_CONFIG_KEY, JSON.stringify(cfg)); } catch (e) {}
+    }
+    // 迁移：旧项目配置自动切换到新项目
+    if (cfg && cfg.url && cfg.url.includes('dlhtcztnkaywvihknual')) {
+        cfg.url = CLOUD_DEFAULT_URL;
+        cfg.anonKey = CLOUD_DEFAULT_ANON_KEY;
+        cfg.__migratedToNewProject = true;
         try { localStorage.setItem(CLOUD_CONFIG_KEY, JSON.stringify(cfg)); } catch (e) {}
     }
     // 迁移：默认项目旧配置（device-xxx 独立 key）统一改为 EGO，保证多设备共享同步
