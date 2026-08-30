@@ -2061,6 +2061,7 @@ grant insert, update, select on sb_sync_bucket to anon;
                 <div class="backup-actions" style="margin-top:10px;">
                     <button type="button" class="btn btn-primary" onclick="githubSaveConfig()">💾 保存配置</button>
                     <button type="button" class="btn btn-ghost" style="color:#24292f;border-color:#24292f;" onclick="githubBackupNow()">🐙 立即备份到 GitHub</button>
+                    <button type="button" class="btn btn-ghost" style="color:var(--tag-a);border-color:var(--tag-a);" onclick="githubRestore()">⬇️ 从 GitHub 恢复</button>
                 </div>
                 <div class="row" style="margin-top:8px;"><span class="k">最后GitHub备份</span><span class="v" id="ghLastBackup" style="font-size:11px;">从未备份</span></div>
                 <p class="backup-hint" id="ghHint" style="display:none;"></p>
@@ -6517,6 +6518,61 @@ async function githubBackupNow(silent) {
     } catch (e) {
         if (!silent && hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 备份失败：' + e.message; }
         if (!silent) toast('⚠️ GitHub 备份失败：' + e.message);
+    }
+}
+
+/* 从 GitHub 恢复备份 */
+async function githubRestore() {
+    const cfg = githubLoadConfig();
+    if (!cfg.token) { toast('⚠️ 请先保存 GitHub Token'); return; }
+    if (!cfg.repo || !cfg.repo.includes('/')) { toast('⚠️ 仓库格式应为 owner/repo'); return; }
+    const hint = document.getElementById('ghHint');
+    if (!confirm('从 GitHub 恢复将覆盖当前所有客源/盘源/标签数据，确定继续吗？')) return;
+    if (hint) { hint.style.display = 'block'; hint.textContent = '⏳ 正在从 GitHub 下载备份...'; }
+    try {
+        const [owner, repo] = cfg.repo.split('/');
+        const branch = cfg.branch || 'main';
+        const path = cfg.path || 'backup/data.json';
+        const resp = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`, {
+            headers: { 'Authorization': `token ${cfg.token}`, 'Accept': 'application/vnd.github+json', 'User-Agent': 'property-helper' }
+        });
+        if (!resp.ok) {
+            if (resp.status === 404) throw new Error('备份文件不存在，请先备份一次');
+            throw new Error(`HTTP ${resp.status}`);
+        }
+        const d = await resp.json();
+        const content = decodeURIComponent(escape(atob(d.content)));
+        let data;
+        try {
+            data = JSON.parse(content);
+        } catch (e) {
+            throw new Error('备份文件解析失败');
+        }
+        if (!data || (!data[CUS_STORAGE] && !data[PRO_STORAGE])) {
+            throw new Error('备份文件内容不正确，未找到客源/盘源数据');
+        }
+        // 恢复数据
+        BACKUP_KEYS.forEach(k => {
+            if (data[k] != null) localStorage.setItem(k, data[k]);
+        });
+        if (data[BACKUP_APP_KEY] != null) localStorage.setItem(BACKUP_APP_KEY, data[BACKUP_APP_KEY]);
+        // 刷新所有视图
+        renderCusTagChips && renderCusTagChips();
+        renderProTagChips && renderProTagChips();
+        renderCustomerList && renderCustomerList();
+        renderPropertyList && renderPropertyList();
+        renderProPriceFilter && renderProPriceFilter();
+        renderProTypeFilter && renderProTypeFilter();
+        renderProTagFilter && renderProTagFilter();
+        renderSelectedFilterBar && renderSelectedFilterBar();
+        renderBackupStat && renderBackupStat();
+        resetCustomerForm && resetCustomerForm();
+        resetPropertyForm && resetPropertyForm();
+        if (hint) { hint.style.display = 'block'; hint.textContent = '✅ 已从 GitHub 恢复备份'; }
+        toast('✅ 已从 GitHub 恢复备份');
+    } catch (e) {
+        if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 恢复失败：' + e.message; }
+        toast('⚠️ GitHub 恢复失败：' + e.message);
     }
 }
 
