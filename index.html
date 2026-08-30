@@ -2026,6 +2026,46 @@ grant insert, update, select on sb_sync_bucket to anon;
                 </p>
             </div>
 
+            <div class="sub-card">
+                <div class="sub-title"><span>🐙 GitHub 备份（第二重保险）</span></div>
+                <p class="backup-desc">把客源、盘源、标签数据导出为 JSON 文件，提交到你的 GitHub 仓库。即使 Supabase 出问题，GitHub 上也有一份完整备份。</p>
+                <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px;">
+                    <div>
+                        <label style="font-size:12px;color:var(--text-hint);">GitHub Token（Personal Access Token）</label>
+                        <input id="ghToken" type="password" placeholder="ghp_xxxxxxxxxxxx" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);padding:9px 10px;font-size:13px;margin-top:3px;">
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                        <div>
+                            <label style="font-size:12px;color:var(--text-hint);">仓库（owner/repo）</label>
+                            <input id="ghRepo" type="text" placeholder="EGO-GIT-COLLA/EGO" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);padding:9px 10px;font-size:13px;margin-top:3px;">
+                        </div>
+                        <div>
+                            <label style="font-size:12px;color:var(--text-hint);">分支</label>
+                            <input id="ghBranch" type="text" placeholder="main" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);padding:9px 10px;font-size:13px;margin-top:3px;">
+                        </div>
+                    </div>
+                    <div>
+                        <label style="font-size:12px;color:var(--text-hint);">备份文件路径</label>
+                        <input id="ghPath" type="text" placeholder="backup/data.json" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);padding:9px 10px;font-size:13px;margin-top:3px;">
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+                        <label style="position:relative;display:inline-block;width:42px;height:22px;cursor:pointer;">
+                            <input type="checkbox" id="ghAutoBackup" style="opacity:0;width:0;height:0;" onchange="toggleGhAutoBackup(this.checked)">
+                            <span id="ghAutoSlider" style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background-color:var(--border);border-radius:22px;transition:.3s;">
+                                <span style="position:absolute;height:16px;width:16px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s;"></span>
+                            </span>
+                        </label>
+                        <span style="font-size:13px;color:var(--text);">自动备份到 GitHub（数据变更后5分钟内提交）</span>
+                    </div>
+                </div>
+                <div class="backup-actions" style="margin-top:10px;">
+                    <button type="button" class="btn btn-primary" onclick="githubSaveConfig()">💾 保存配置</button>
+                    <button type="button" class="btn btn-ghost" style="color:#24292f;border-color:#24292f;" onclick="githubBackupNow()">🐙 立即备份到 GitHub</button>
+                </div>
+                <div class="row" style="margin-top:8px;"><span class="k">最后GitHub备份</span><span class="v" id="ghLastBackup" style="font-size:11px;">从未备份</span></div>
+                <p class="backup-hint" id="ghHint" style="display:none;"></p>
+            </div>
+
         </div>
 
         <!-- ========== Tab 5：搜索（全局搜索 + 快捷标签，独立 Tab 放在正中间） ========== -->
@@ -5600,6 +5640,7 @@ async function cloudSyncUpload() {
 }
 // 防抖：连续保存只合并成一次上传（2 秒窗口）。fire-and-forget，不阻塞 UI。
 function cloudSyncDebounced() {
+    if (typeof scheduleGhBackup === 'function') scheduleGhBackup();
     const cfg = cloudLoadConfig();
     if (!cfg || !cfg.url || !cfg.anonKey) return;
     if (__cloudSyncTimer) clearTimeout(__cloudSyncTimer);
@@ -6340,6 +6381,128 @@ function renderBackupStat() {
 }
 
 // 本机导出：下载 JSON 文件
+/* ========== GitHub 备份 ========== */
+const GH_CONFIG_KEY = 're_github_backup_config';
+const GH_LAST_BACKUP_KEY = 're_last_github_backup_at';
+let __ghAutoTimer = null;
+let __ghPendingBackup = false;
+
+function githubLoadConfig() {
+    try {
+        const raw = localStorage.getItem(GH_CONFIG_KEY);
+        if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return { token: '', repo: 'EGO-GIT-COLLA/EGO', branch: 'main', path: 'backup/data.json', autoBackup: false };
+}
+function githubSaveConfig() {
+    const token = (document.getElementById('ghToken') || {}).value || '';
+    const repo = (document.getElementById('ghRepo') || {}).value || 'EGO-GIT-COLLA/EGO';
+    const branch = (document.getElementById('ghBranch') || {}).value || 'main';
+    const path = (document.getElementById('ghPath') || {}).value || 'backup/data.json';
+    const autoBackup = (document.getElementById('ghAutoBackup') || {}).checked || false;
+    if (!token) { toast('⚠️ 请填写 GitHub Token'); return; }
+    const cfg = { token, repo, branch, path, autoBackup };
+    try { localStorage.setItem(GH_CONFIG_KEY, JSON.stringify(cfg)); } catch (e) {}
+    updateGhUI();
+    if (autoBackup) startGhAutoTimer(); else stopGhAutoTimer();
+    const hint = document.getElementById('ghHint');
+    if (hint) { hint.style.display = 'block'; hint.textContent = '✅ GitHub 配置已保存'; }
+    toast('✅ GitHub 配置已保存');
+}
+function updateGhUI() {
+    const cfg = githubLoadConfig();
+    const t = document.getElementById('ghToken'); if (t && !t.value) t.value = cfg.token || '';
+    const r = document.getElementById('ghRepo'); if (r && !r.value) r.value = cfg.repo || 'EGO-GIT-COLLA/EGO';
+    const b = document.getElementById('ghBranch'); if (b && !b.value) b.value = cfg.branch || 'main';
+    const p = document.getElementById('ghPath'); if (p && !p.value) p.value = cfg.path || 'backup/data.json';
+    const cb = document.getElementById('ghAutoBackup'); if (cb) cb.checked = !!cfg.autoBackup;
+    const slider = document.getElementById('ghAutoSlider');
+    if (slider) {
+        slider.style.backgroundColor = cfg.autoBackup ? 'var(--accent)' : 'var(--border)';
+        const dot = slider.querySelector('span');
+        if (dot) dot.style.transform = cfg.autoBackup ? 'translateX(20px)' : 'translateX(0)';
+    }
+    const last = document.getElementById('ghLastBackup');
+    if (last) {
+        const ts = Number(localStorage.getItem(GH_LAST_BACKUP_KEY) || 0);
+        last.textContent = ts ? new Date(ts).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '从未备份';
+    }
+}
+function toggleGhAutoBackup(enabled) {
+    const cfg = githubLoadConfig();
+    cfg.autoBackup = enabled;
+    try { localStorage.setItem(GH_CONFIG_KEY, JSON.stringify(cfg)); } catch (e) {}
+    updateGhUI();
+    if (enabled) { startGhAutoTimer(); toast('✅ GitHub 自动备份已开启'); }
+    else { stopGhAutoTimer(); toast('⚠️ GitHub 自动备份已关闭'); }
+}
+function startGhAutoTimer() {
+    stopGhAutoTimer();
+    __ghAutoTimer = setInterval(function() {
+        if (__ghPendingBackup) {
+            __ghPendingBackup = false;
+            githubBackupNow(true);
+        }
+    }, 60000); // 每分钟检查一次，有变更则备份
+}
+function stopGhAutoTimer() {
+    if (__ghAutoTimer) { clearInterval(__ghAutoTimer); __ghAutoTimer = null; }
+}
+function scheduleGhBackup() {
+    const cfg = githubLoadConfig();
+    if (cfg.autoBackup && cfg.token) {
+        __ghPendingBackup = true;
+    }
+}
+async function githubBackupNow(silent) {
+    const cfg = githubLoadConfig();
+    if (!cfg.token) { toast('⚠️ 请先保存 GitHub Token'); return; }
+    if (!cfg.repo || !cfg.repo.includes('/')) { toast('⚠️ 仓库格式应为 owner/repo'); return; }
+    const hint = document.getElementById('ghHint');
+    if (!silent && hint) { hint.style.display = 'block'; hint.textContent = '⏳ 正在备份到 GitHub...'; }
+    try {
+        const data = backupCollect();
+        const json = JSON.stringify(data, null, 2);
+        const content = btoa(unescape(encodeURIComponent(json)));
+        const [owner, repo] = cfg.repo.split('/');
+        const branch = cfg.branch || 'main';
+        const path = cfg.path || 'backup/data.json';
+        // 1. 获取当前文件 sha
+        let sha = null;
+        try {
+            const resp = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`, {
+                headers: { 'Authorization': `token ${cfg.token}`, 'Accept': 'application/vnd.github+json', 'User-Agent': 'property-helper' }
+            });
+            if (resp.ok) {
+                const d = await resp.json();
+                sha = d.sha;
+            }
+        } catch (e) {}
+        // 2. 创建/更新文件
+        const now = new Date();
+        const msg = `备份数据 ${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+        const body = { message: msg, content: content, branch: branch };
+        if (sha) body.sha = sha;
+        const resp = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+            method: 'PUT',
+            headers: { 'Authorization': `token ${cfg.token}`, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json', 'User-Agent': 'property-helper' },
+            body: JSON.stringify(body)
+        });
+        if (resp.ok) {
+            localStorage.setItem(GH_LAST_BACKUP_KEY, String(Date.now()));
+            updateGhUI();
+            if (!silent && hint) { hint.style.display = 'block'; hint.textContent = '✅ 已备份到 GitHub'; }
+            if (!silent) toast('✅ 已备份到 GitHub');
+        } else {
+            const err = await resp.json();
+            throw new Error(err.message || `HTTP ${resp.status}`);
+        }
+    } catch (e) {
+        if (!silent && hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 备份失败：' + e.message; }
+        if (!silent) toast('⚠️ GitHub 备份失败：' + e.message);
+    }
+}
+
 function backupExportLocal() {
     try {
         const data = backupCollect();
@@ -6543,6 +6706,10 @@ updateAuthUI();
         cloudPullAndApplyIfNewer();
     }
     startAutoSyncTimer();
+    // GitHub 备份初始化
+    updateGhUI();
+    const ghCfg = githubLoadConfig();
+    if (ghCfg.autoBackup) startGhAutoTimer();
 })();
 
 /* 兜底：加载后移除平台注入的"豆包 AI 生成"水印（CSS 已隐藏，这里彻底删除） */
