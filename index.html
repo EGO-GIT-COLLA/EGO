@@ -3505,6 +3505,29 @@ function _gsShowModal({ icon, title, badge, navLabel, navPrev, navNext, topImage
 function closeGsPreview() {
     _gsRemoveModal();
 }
+
+/* 从预览弹窗跳转到盘源列表并定位到指定盘源 */
+function jumpPropertyById(id, filter) {
+    closeGsPreview();
+    switchTab('property');
+    switchProView('list');
+    // 清除筛选，确保目标盘源可见
+    if (typeof clearProFilter === 'function') clearProFilter();
+    if (typeof renderPropertyList === 'function') renderPropertyList();
+    // 延迟滚动定位（等列表渲染完成）
+    setTimeout(function() {
+        const card = document.querySelector('[data-prop-id="' + id + '"]');
+        if (card) {
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // 高亮闪烁
+            card.style.transition = 'box-shadow 0.3s';
+            card.style.boxShadow = '0 0 0 3px #d4af37, 0 8px 24px rgba(212,175,55,0.4)';
+            setTimeout(function() {
+                card.style.boxShadow = '';
+            }, 2000);
+        }
+    }, 350);
+}
 /* 客源列表点击弹窗概览（复用 _gsShowModal，无过目导航） */
 function cusPreview(id) {
     const c = loadCustomers().find(x => x.id === id);
@@ -5078,7 +5101,7 @@ function propertyCardHtml(p) {
             <span class="rate-badge">📈 <span class="rate-pct">${rorPct.toFixed(2)}</span>&#37;</span>
         </div>`;
     return `
-        <div class="item-card ${imgs.length > 0 ? 'has-side-cover' : ''}" onclick="editProperty('${p.id}')">
+        <div class="item-card ${imgs.length > 0 ? 'has-side-cover' : ''}" data-prop-id="${p.id}" onclick="editProperty('${p.id}')">
             <div class="card-main">
                 <div class="item-head">
                     <div class="item-name">${escapeHTML(p.title)}</div>
