@@ -2253,14 +2253,53 @@ function parsePropertyOcr(raw) {
     result.tags = extractTagsFromText(text, {
         customer: false,
         want: ['学区', '地铁', '满五唯一', '精装', '毛坯', '电梯', '朝南', '南北通透', '带车位', '可谈价', '急售', '海景', '新房', '次新房', '投资',
-               '洋房', '商住楼', '地皮厂房', '商业体', '别墅', '商铺', '写字楼', '租盘', '售盘']
+               '洋房', '商住楼', '地皮厂房', '商业体', '别墅', '商铺', '写字楼', '租盘', '售盘', '住宅', '公寓', '车位', '仓库']
+    });
+    // 物业类型自动识别：从 PRO_TYPE_TAGS 里匹配（商铺/别墅/写字楼/洋房/商业体/地皮厂房/商住楼）
+    (typeof PRO_TYPE_TAGS !== 'undefined' ? PRO_TYPE_TAGS : []).forEach(t => {
+        if (text.includes(t) && !result.tags.includes(t)) result.tags.push(t);
     });
     // 价格区间标签：根据识别到的总价自动归类（如 280万 → 200-500万）
     if (result.price) {
         const pn = Number(result.price);
         if (!isNaN(pn) && pn > 0) {
-            const seg = PRO_PRICE_TAGS.find(s => pn >= s.min && (s.max === Infinity ? true : pn < s.max));
+            const seg = (typeof PRO_PRICE_TAGS !== 'undefined' ? PRO_PRICE_TAGS : []).find(s => pn >= s.min && (s.max === Infinity ? true : pn < s.max));
             if (seg && !result.tags.includes(seg.label)) result.tags.push(seg.label);
+        }
+    }
+    // 面积区间标签：根据面积自动归类
+    if (result.size) {
+        const sn = Number(result.size);
+        if (!isNaN(sn) && sn > 0) {
+            const sizeSegs = [
+                { label: '0-50㎡', min: 0, max: 50 },
+                { label: '50-100㎡', min: 50, max: 100 },
+                { label: '100-200㎡', min: 100, max: 200 },
+                { label: '200-500㎡', min: 200, max: 500 },
+                { label: '500-1000㎡', min: 500, max: 1000 },
+                { label: '1000㎡以上', min: 1000, max: Infinity }
+            ];
+            const seg = sizeSegs.find(s => sn >= s.min && (s.max === Infinity ? true : sn < s.max));
+            if (seg && !result.tags.includes(seg.label)) result.tags.push(seg.label);
+        }
+    }
+    // 租盘/售盘自动识别：有租金→租盘，有总价且无租金→售盘
+    const hasRent = (result.rentMonthly && Number(result.rentMonthly) > 0) || (result.rentYearly && Number(result.rentYearly) > 0);
+    const hasPrice = result.price && Number(result.price) > 0;
+    if (hasRent && !result.tags.includes('租盘')) result.tags.push('租盘');
+    if (hasPrice && !hasRent && !result.tags.includes('售盘')) result.tags.push('售盘');
+    // 回报率标签：根据总价和年租金自动计算回报率区间
+    if (hasPrice && hasRent) {
+        const pn = Number(result.price);
+        const yearlyWan = result.rentYearly ? Number(result.rentYearly) : (result.rentMonthly ? Number(result.rentMonthly) * 12 / 10000 : 0);
+        if (pn > 0 && yearlyWan > 0) {
+            const ror = yearlyWan / pn * 100;
+            let rorTag = '';
+            if (ror >= 8) rorTag = '高回报≥8%';
+            else if (ror >= 5) rorTag = '中回报5-8%';
+            else if (ror >= 3) rorTag = '低回报3-5%';
+            else rorTag = '微回报<3%';
+            if (rorTag && !result.tags.includes(rorTag)) result.tags.push(rorTag);
         }
     }
     return result;
@@ -4390,7 +4429,6 @@ function renderCustomerList() {
                 <div class="item-row">
                     <div><span class="k">联系：</span><span class="v">${contact}</span></div>
                 </div>
-                ${c.note ? `<div class="item-note">${escapeHTML(c.note)}</div>` : ''}
                 ${tags ? `<div class="item-tags">${tags}</div>` : ''}
                 ${matchedProBlockHtml(c, { topN: 3 })}
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
@@ -5294,7 +5332,6 @@ function propertyCardHtml(p) {
                     ${rateHtml}
                     <div style="grid-column: 1 / -1;"><span class="k">维护人：</span>${maintainer}</div>
                 </div>
-                ${p.note ? `<div class="item-note">${escapeHTML(p.note)}</div>` : ''}
                 ${tags ? `<div class="item-tags">${tags}</div>` : ''}
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
                     <span class="muted">更新：${timeAgo(p.updatedAt || p.createdAt || Date.now())}</span>
