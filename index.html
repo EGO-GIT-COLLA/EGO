@@ -5685,12 +5685,11 @@ function updateAuthUI() {
 }
 /* 预填的 Supabase 默认配置（anon key 非敏感，官方允许放前端；配合 RLS 使用）
    user_key 默认用浏览器 hostname 的 hash，保证每台设备唯一，可手动修改 */
-const CLOUD_DEFAULT_URL = 'https://dlhtcztnkaywvihknual.supabase.co';
-const CLOUD_DEFAULT_ANON_KEY = 'sb_publishable_wGnTtz9Rg3ej3eiMiuFAew_iyEbtZzf';
+const CLOUD_DEFAULT_URL = 'https://jqzwhjoyhayfmpsksjbb.supabase.co';
+const CLOUD_DEFAULT_ANON_KEY = 'sb_publishable_XJrYpJjWn_jyp4QVZ6KIYw_hgl8IWHm';
 function _cloudDefaultUserKey() {
-    /* 统一使用固定 user_key 'EGO'：默认 Supabase 项目已有该行且 RLS 允许更新，
-       所有设备共用该 key 即可实现多设备实时云同步（避免每台设备独立 key 无法新建行）。 */
-    return 'EGO';
+    /* 统一使用固定 user_key 'egogaoyin'：所有设备共用该 key 即可实现多设备实时云同步。 */
+    return 'egogaoyin';
 }
 const CLOUD_DEFAULT_USER_KEY = _cloudDefaultUserKey();
 const CLOUD_TABLE = 'sb_sync_bucket';
@@ -5720,17 +5719,19 @@ function cloudLoadConfig() {
         try { localStorage.setItem(CLOUD_CONFIG_KEY, JSON.stringify(cfg)); } catch (e) {}
     }
     // 迁移：默认项目旧配置（device-xxx 独立 key）统一改为 EGO，保证多设备共享同步
-    if (cfg && cfg.url === CLOUD_DEFAULT_URL && cfg.anonKey === CLOUD_DEFAULT_ANON_KEY && cfg.userKey && cfg.userKey !== 'EGO' && !cfg.__egoMigrated) {
-        cfg.userKey = 'EGO';
+    if (cfg && cfg.url === CLOUD_DEFAULT_URL && cfg.anonKey === CLOUD_DEFAULT_ANON_KEY && cfg.userKey && cfg.userKey !== 'egogaoyin' && !cfg.__egoMigrated) {
+        cfg.userKey = 'egogaoyin';
         cfg.isDefault = true;
         cfg.__egoMigrated = true;
         try { localStorage.setItem(CLOUD_CONFIG_KEY, JSON.stringify(cfg)); } catch (e) {}
     }
-    // 登录后用用户 UUID 作为 user_key，实现数据与账号绑定（换设备登录即恢复）
-    const session = (typeof authGetSession === 'function') ? authGetSession() : null;
-    if (session && session.user && session.user.id) {
-        cfg.userKey = session.user.id;
-        cfg.isDefault = false;
+    // 统一使用固定 user_key，不随登录状态改变，确保多设备数据互通
+    // （登录仅用于权限控制，云同步数据桶统一用 egogaoyin）
+    const fixedKey = _cloudDefaultUserKey();
+    if (cfg.userKey !== fixedKey) {
+        cfg.userKey = fixedKey;
+        cfg.isDefault = true;
+        try { localStorage.setItem(CLOUD_CONFIG_KEY, JSON.stringify(cfg)); } catch (e) {}
     }
     return cfg;
 }
