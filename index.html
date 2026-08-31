@@ -6110,6 +6110,48 @@ async function cloudRefreshAllMerge(notify) {
     const session = authGetSession();
     if (!session) return;
     try {
+        // 优先从聚合桶（sb_sync_bucket）拉取完整数据：盘源+客源+标签都在里面
+        const cfg = cloudLoadConfig();
+        let cloudProCnt = 0, cloudCusCnt = 0;
+        if (cfg && cfg.url && cfg.anonKey && cfg.userKey) {
+            const rows = await fetch(cfg.url + '/rest/v1/' + CLOUD_TABLE + '?user_key=eq.' + encodeURIComponent(cfg.userKey) + '&select=payload,updated_at&limit=1', {
+                method: 'GET',
+                headers: { 'apikey': cfg.anonKey, 'Authorization': 'Bearer ' + cfg.anonKey }
+            }).then(r => r.ok ? r.json() : []).catch(() => []);
+            if (Array.isArray(rows) && rows.length > 0 && rows[0] && rows[0].payload) {
+                const payload = rows[0].payload;
+                if (payload[PRO_STORAGE] != null) {
+                    const arr = JSON.parse(payload[PRO_STORAGE] || '[]');
+                    localStorage.setItem(PRO_STORAGE, JSON.stringify(Array.isArray(arr) ? arr.map(normalizeProperty) : []));
+                    cloudProCnt = Array.isArray(arr) ? arr.length : 0;
+                    try { localStorage.setItem(CLOUD_PRO_CACHE, JSON.stringify({ ts: Date.now(), items: cloudProCnt, cloudCnt: cloudProCnt })); } catch (e) {}
+                }
+                if (payload[CUS_STORAGE] != null) {
+                    const arr = JSON.parse(payload[CUS_STORAGE] || '[]');
+                    localStorage.setItem(CUS_STORAGE, JSON.stringify(Array.isArray(arr) ? arr : []));
+                    cloudCusCnt = Array.isArray(arr) ? arr.length : 0;
+                    try { localStorage.setItem(CLOUD_CUS_CACHE, JSON.stringify({ ts: Date.now(), items: cloudCusCnt, cloudCnt: cloudCusCnt })); } catch (e) {}
+                }
+                if (payload[PRO_TAG_STORAGE] != null) localStorage.setItem(PRO_TAG_STORAGE, payload[PRO_TAG_STORAGE]);
+                if (payload[BACKUP_APP_KEY] != null) localStorage.setItem(BACKUP_APP_KEY, payload[BACKUP_APP_KEY]);
+                localStorage.setItem(CLOUD_LAST_SYNC_KEY, String(Date.now()));
+                try {
+                    renderCustomerList && renderCustomerList();
+                    renderPropertyList && renderPropertyList();
+                    renderProTagFilter && renderProTagFilter();
+                    renderProPriceFilter && renderProPriceFilter();
+                    renderProTypeFilter && renderProTypeFilter();
+                    renderSelectedFilterBar && renderSelectedFilterBar();
+                    renderBackupStat && renderBackupStat();
+                    renderCusTagChips && renderCusTagChips();
+                    renderProTagChips && renderProTagChips();
+                } catch (e) {}
+                if (notify) toast('☁️ 已从云端同步（盘源' + cloudProCnt + '/客源' + cloudCusCnt + '）');
+                return { cloudProCnt, cloudCusCnt };
+            }
+        }
+
+        // 聚合桶无数据时回退：从明细表合并
         const [pros, cuss] = await Promise.all([
             restList(CLOUD_PRO_TABLE, { select: 'id,data,updated_at', order: 'updated_at.desc', limit: '10000' }),
             restList(CLOUD_CUS_TABLE, { select: 'id,data,updated_at', order: 'updated_at.desc', limit: '10000' })
@@ -6118,7 +6160,6 @@ async function cloudRefreshAllMerge(notify) {
         // 合并盘源
         const proMap = new Map();
         loadProperties().forEach(p => proMap.set(String(p.id), p));
-        let cloudProCnt = 0;
         if (Array.isArray(pros)) {
             pros.forEach(row => {
                 if (row && row.data && row.id) {
@@ -6134,7 +6175,6 @@ async function cloudRefreshAllMerge(notify) {
         // 合并客源
         const cusMap = new Map();
         loadCustomers().forEach(c => cusMap.set(String(c.id), c));
-        let cloudCusCnt = 0;
         if (Array.isArray(cuss)) {
             cuss.forEach(row => {
                 if (row && row.data && row.id) {
@@ -6317,8 +6357,8 @@ async function authDoSignup() {
         if (autoLoggedIn) {
             // C5：首次登录迁移本地老数据 → 云端
             cloudMigrateLocalIfNeeded().then(() => {
-                // 迁移后再拉一次云端（合并回来）
-                return cloudRefreshAllMerge(false);
+                // 迁移后再从聚合桶强制拉取完整数据（盘源+客源），确保登录后数据完整显示
+                return cloudPullAndApplyIfNewer(true);
             }).catch(() => {});
         }
     } catch (e) {
@@ -6370,7 +6410,8 @@ async function authDoSignin() {
             fetchUserRole().then(() => updateAuthUI()).catch(() => updateAuthUI());
             updateAutoSyncUI(); startAutoSyncTimer();
             // C5：迁移 + 云端同步（fire-and-forget）
-            cloudMigrateLocalIfNeeded().then(() => cloudRefreshAllMerge(false)).catch(() => {});
+            // 登录后从聚合桶强制拉取完整数据（盘源+客源+标签），保证登录即显示全部数据
+            cloudMigrateLocalIfNeeded().then(() => cloudPullAndApplyIfNewer(true)).catch(() => {});
         }
     } catch (e) {
         if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 网络异常：' + (e && e.message); }
@@ -6707,8 +6748,9 @@ document.addEventListener('keydown', function (e) {
 })();
 
 /* ===== 云端自动同步（自动上传 + 打开页面/定时拉取，保持实时）===== */
-/* 从云端拉取，仅当云端比本地新时静默应用（不弹窗打扰） */
-async function cloudPullAndApplyIfNewer() {
+/* 从云端拉取，仅当云端比本地新时静默应用（不弹窗打扰）
+ * force=true 时强制覆盖本地（登录/注册后使用，确保盘源+客源完整显示） */
+async function cloudPullAndApplyIfNewer(force) {
     try {
         const cfg = cloudLoadConfig();
         if (!cfg || !cfg.url || !cfg.anonKey || !cfg.userKey) return;
@@ -6719,10 +6761,12 @@ async function cloudPullAndApplyIfNewer() {
         if (!Array.isArray(rows) || rows.length === 0) return;
         const payload = rows[0].payload;
         if (!payload || (!payload[CUS_STORAGE] && !payload[PRO_STORAGE])) return;
-        // 云端比本地新才覆盖（按 updated_at 时间戳判断）
-        const cloudTs = rows[0].updated_at ? new Date(rows[0].updated_at).getTime() : 0;
-        const localTs = Number(localStorage.getItem(CLOUD_LAST_SYNC_KEY) || 0);
-        if (cloudTs && localTs && cloudTs <= localTs) return; // 本地已是最新
+        // 云端比本地新才覆盖（按 updated_at 时间戳判断）；force=true 时跳过时间判断强制应用
+        if (!force) {
+            const cloudTs = rows[0].updated_at ? new Date(rows[0].updated_at).getTime() : 0;
+            const localTs = Number(localStorage.getItem(CLOUD_LAST_SYNC_KEY) || 0);
+            if (cloudTs && localTs && cloudTs <= localTs) return; // 本地已是最新
+        }
         BACKUP_KEYS.forEach(k => { if (payload[k] != null) localStorage.setItem(k, payload[k]); });
         if (payload[BACKUP_APP_KEY] != null) localStorage.setItem(BACKUP_APP_KEY, payload[BACKUP_APP_KEY]);
         localStorage.setItem(CLOUD_LAST_SYNC_KEY, String(Date.now()));
