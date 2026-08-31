@@ -5568,7 +5568,7 @@ function startAutoSyncTimer() {
     stopAutoSyncTimer();
     if (!isAutoSyncEnabled()) return;
     __autoSyncTimer = setInterval(function() {
-        if (isAutoSyncEnabled() && authGetSession()) cloudPullAndApplyIfNewer();
+        if (isAutoSyncEnabled()) cloudPullAndApplyIfNewer();
     }, 30000);
 }
 function stopAutoSyncTimer() {
@@ -6719,7 +6719,8 @@ updateAuthUI();
 /* 页面加载：初始化自动同步开关UI + 启动定时器 */
 (function autoCloudSyncOnLoad() {
     updateAutoSyncUI();
-    if (isAutoSyncEnabled() && authGetSession()) {
+    // 打开页面自动从云端拉取最新数据（只要配置了Supabase，无需登录）
+    if (isAutoSyncEnabled()) {
         cloudPullAndApplyIfNewer();
     }
     startAutoSyncTimer();
