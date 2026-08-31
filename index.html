@@ -2060,15 +2060,15 @@
                 <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px;">
                     <div>
                         <label style="font-size:12px;color:var(--text-hint);">Project URL</label>
-                        <input id="sbUrl" type="text" value="https://dlhtcztnkaywvihknual.supabase.co" placeholder="https://xxxx.supabase.co" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);padding:9px 10px;font-size:13px;margin-top:3px;">
+                        <input id="sbUrl" type="text" value="https://jqzwhjoyhayfmpsksjbb.supabase.co" placeholder="https://xxxx.supabase.co" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);padding:9px 10px;font-size:13px;margin-top:3px;">
                     </div>
                     <div>
                         <label style="font-size:12px;color:var(--text-hint);">anon public key</label>
-                        <input id="sbKey" type="text" value="sb_publishable_wGnTtz9Rg3ej3eiMiuFAew_iyEbtZzf" placeholder="eyJhbGciOi..." style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);padding:9px 10px;font-size:13px;margin-top:3px;">
+                        <input id="sbKey" type="text" value="sb_publishable_XJrYpJjWn_jyp4QVZ6KIYw_hgl8IWHm" placeholder="eyJhbGciOi..." style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);padding:9px 10px;font-size:13px;margin-top:3px;">
                     </div>
                     <div>
                         <label style="font-size:12px;color:var(--text-hint);">数据桶标识（user_key，自定义，如 my-phone-001）</label>
-                        <input id="sbUserKey" type="text" placeholder="my-phone-001" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);padding:9px 10px;font-size:13px;margin-top:3px;">
+                        <input id="sbUserKey" type="text" value="egogaoyin" placeholder="my-phone-001" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);padding:9px 10px;font-size:13px;margin-top:3px;">
                     </div>
                 </div>
                 <div class="backup-actions" style="margin-top:10px;">
@@ -6717,6 +6717,26 @@ async function cloudPullAndApplyIfNewer() {
 /* 页面加载：更新权限UI（未登录隐藏客源tab） */
 updateAuthUI();
 /* 页面加载：初始化自动同步开关UI + 启动定时器 */
+/* URL hash 自动配置：#sb=url|anonKey|userKey 打开即自动配置 */
+(function autoConfigFromUrl() {
+    try {
+        const hash = window.location.hash || '';
+        const m = hash.match(/sb=([^&]+)/);
+        if (!m) return;
+        const parts = decodeURIComponent(m[1]).split('|');
+        if (parts.length >= 2) {
+            const u = document.getElementById('sbUrl');
+            const k = document.getElementById('sbKey');
+            const uk = document.getElementById('sbUserKey');
+            if (u) u.value = parts[0];
+            if (k) k.value = parts[1];
+            if (uk && parts[2]) uk.value = parts[2];
+            if (typeof cloudSaveConfig === 'function') cloudSaveConfig();
+            console.log('[autoConfig] 已从URL自动配置Supabase');
+        }
+    } catch (e) { console.warn('[autoConfig] 失败:', e); }
+})();
+
 (function autoCloudSyncOnLoad() {
     updateAutoSyncUI();
     // 打开页面自动从云端拉取最新数据（只要配置了Supabase，无需登录）
