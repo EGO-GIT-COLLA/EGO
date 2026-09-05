@@ -1866,9 +1866,9 @@
                         </div>
                     </div>
                     <div class="form-group">
-                        <label>成交价</label>
+                        <label>房屋总价/评估价</label>
                         <div class="input-wrapper">
-                            <input type="number" id="taxTotalPrice" placeholder="请输入成交价（万元）" min="0" step="any" oninput="calcTax(true)">
+                            <input type="number" id="taxTotalPrice" placeholder="请输入房屋总价或评估价（万元）" min="0" step="any" oninput="calcTax(true)">
                             <span class="prefix prefix-right">万元</span>
                         </div>
                     </div>
@@ -1922,13 +1922,6 @@
                             </div>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>中介费率 <span class="muted">（可调整，默认2%）</span></label>
-                        <div class="input-wrapper">
-                            <input type="number" id="taxAgentRate" value="2" min="0" max="10" step="0.1" oninput="calcTax(true)">
-                            <span class="prefix prefix-right">%</span>
-                        </div>
-                    </div>
                     <button type="button" class="btn btn-primary" onclick="calcTax()">计算税费</button>
                     <div class="err" id="taxError"></div>
                     <div style="margin-top:10px;font-size:11.5px;color:var(--text-hint);line-height:1.6;">
@@ -1944,6 +1937,14 @@
                     <div style="margin-top:12px;">
                         <div id="taxBreakdown" style="font-size:13.5px;color:var(--text-sub);line-height:1.9;"></div>
                     </div>
+                </div>
+                <!-- 历史记录 -->
+                <div class="sub-card" style="padding:14px;margin-top:12px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <div style="font-weight:600;font-size:14px;">📜 最近计算记录</div>
+                        <button type="button" class="btn btn-ghost" style="padding:4px 10px;font-size:11px;color:var(--text-hint);" onclick="clearTaxHistory()">清空</button>
+                    </div>
+                    <div id="taxHistoryList" style="font-size:12.5px;color:var(--text-sub);"></div>
                 </div>
             </div><!-- /tool-tax -->
 
@@ -4220,6 +4221,7 @@ function proPreview(id) {
         rows,
         postInfo: followupsBlockHtml(p.followups) + similarPropertiesHtml(p, { topN: 5 }),
         actions: [
+            { label: '💰 计算税费', cls: 'btn-primary', style: '', onClick: `calcTaxFromProperty('${p.id}')` },
             { label: '✏️ 编辑', cls: 'btn-ghost', style: 'color:#d4af37;border-color:#d4af37;', onClick: `closeGsPreview(); editProperty('${p.id}')` },
             { label: '🗑️ 删除', cls: 'btn-ghost', style: 'color:#dc5050;border-color:#dc5050;', onClick: `closeGsPreview(); deleteProperty('${p.id}')` }
         ]
@@ -4747,6 +4749,7 @@ function switchToolView(name) {
     const map = { roi: 'toolNavRoi', tax: 'toolNavTax', loan: 'toolNavLoan' };
     const btn = document.getElementById(map[name]);
     if (btn) btn.classList.add('active');
+    if (name === 'tax' && typeof renderTaxHistory === 'function') renderTaxHistory();
 }
 
 /* =========================================================
@@ -4811,7 +4814,6 @@ function calcLvtProgressive(increment, deduction) {
 function calcTax(silent) {
     hideError('taxError');
     const totalWan = parseFloat(document.getElementById('taxTotalPrice').value);
-    const agentRate = parseFloat(document.getElementById('taxAgentRate').value) || 0;
     const fail = (msg) => {
         document.getElementById('taxResultCard').classList.remove('show');
         if (silent) return;
@@ -4918,9 +4920,8 @@ function calcTax(silent) {
         sellerTotal += lvtTax;
     }
 
-    // 中介费
-    const agentFee = total * (agentRate / 100);
-    const totalTax = buyerTotal + sellerTotal + agentFee;
+    // 税费合计（不含中介费）
+    const totalTax = buyerTotal + sellerTotal;
     const totalTaxWan = totalTax / 10000;
 
     document.getElementById('taxTotal').innerHTML = totalTaxWan.toFixed(2) + '<span class="pct">万元</span>';
@@ -4941,17 +4942,15 @@ function calcTax(silent) {
     document.getElementById('taxBreakdown').innerHTML =
         renderItems(buyerItems, buyerTotal, '👤 买方税费', '#4fc3f7') +
         renderItems(sellerItems, sellerTotal, '🏢 卖方税费', '#ffb74d') +
-        `<div style="display:flex;justify-content:space-between;border-bottom:1px dashed var(--chip-border);padding:3px 0;">
-            <span>中介费 <span style="color:var(--text-hint);font-size:12px;">(${agentRate}%)</span></span>
-            <span style="font-weight:600;">${(agentFee / 10000).toFixed(2)} 万</span>
-        </div>` +
         `<div style="display:flex;justify-content:space-between;padding:6px 0;font-weight:700;color:var(--accent);margin-top:6px;font-size:14px;">
-            <span>💰 购房总成本（房价+全部税费+中介）</span>
+            <span>💰 房价+税费合计</span>
             <span>${(totalWan + totalTaxWan).toFixed(2)} 万元</span>
         </div>`;
     document.getElementById('taxResultCard').classList.add('show');
     // 存储结果供一键复制
-    window.__taxResultText = buildTaxCopyText(totalWan, buyerItems, sellerItems, agentFee, agentRate, buyerTotal, sellerTotal, totalTaxWan);
+    window.__taxResultText = buildTaxCopyText(totalWan, buyerItems, sellerItems, buyerTotal, sellerTotal, totalTaxWan);
+    // 保存历史记录
+    if (!silent) saveTaxHistory({ totalWan, buyerTotal, sellerTotal, totalTaxWan, propertyType: taxPropertyType, area: taxPropertyType === 'residential' ? parseFloat(document.getElementById('taxArea').value) : null, houseCount: taxHouseCount, holdType: taxHoldType, originWan: taxPropertyType === 'nonres' ? (parseFloat(document.getElementById('taxOriginPrice').value) || 0) : null, vatMode: taxVatMode, lvtMode: taxLvtMode, time: Date.now() });
     // 自动滚动到结果
     setTimeout(() => {
         const card = document.getElementById('taxResultCard');
@@ -4962,14 +4961,91 @@ function calcTax(silent) {
     }, 150);
 }
 
+/* ===== 税费历史记录 ===== */
+const TAX_HISTORY_KEY = 'tax_calc_history_v1';
+function saveTaxHistory(record) {
+    try {
+        let list = JSON.parse(localStorage.getItem(TAX_HISTORY_KEY) || '[]');
+        list.unshift(record);
+        if (list.length > 10) list = list.slice(0, 10);
+        localStorage.setItem(TAX_HISTORY_KEY, JSON.stringify(list));
+        renderTaxHistory();
+    } catch (e) {}
+}
+function renderTaxHistory() {
+    const el = document.getElementById('taxHistoryList');
+    if (!el) return;
+    try {
+        const list = JSON.parse(localStorage.getItem(TAX_HISTORY_KEY) || '[]');
+        if (list.length === 0) { el.innerHTML = '<div style="color:var(--text-hint);padding:8px 0;">暂无计算记录</div>'; return; }
+        el.innerHTML = list.map((r, i) => {
+            const typeName = r.propertyType === 'residential' ? '住宅' : '非住宅';
+            const areaStr = r.area ? r.area + '㎡' : '';
+            const timeStr = new Date(r.time).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+            return `<div onclick="loadTaxHistoryRecord(${i})" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid var(--chip-border);cursor:pointer;border-radius:6px;" onmouseover="this.style.background='var(--chip-bg)'" onmouseout="this.style.background=''">
+                <span>${timeStr} · ${typeName}${areaStr ? ' ' + areaStr : ''} · ${r.totalWan}万</span>
+                <span style="font-weight:600;color:var(--accent);">税费${r.totalTaxWan.toFixed(2)}万</span>
+            </div>`;
+        }).join('');
+    } catch (e) { el.innerHTML = '<div style="color:var(--text-hint);">记录读取失败</div>'; }
+}
+function loadTaxHistoryRecord(index) {
+    try {
+        const list = JSON.parse(localStorage.getItem(TAX_HISTORY_KEY) || '[]');
+        const r = list[index];
+        if (!r) return;
+        document.getElementById('taxTotalPrice').value = r.totalWan;
+        setTaxType(r.propertyType);
+        if (r.propertyType === 'residential') {
+            if (r.area) document.getElementById('taxArea').value = r.area;
+            setTaxHouseCount(r.houseCount || 1);
+            setTaxHold(r.holdType || 'full5only');
+        } else {
+            if (r.originWan != null) document.getElementById('taxOriginPrice').value = r.originWan;
+            setTaxVatMode(r.vatMode || 'diff');
+            setTaxLvtMode(r.lvtMode || 'approved');
+        }
+        calcTax();
+        toast('✅ 已恢复历史记录');
+    } catch (e) { toast('⚠️ 恢复失败'); }
+}
+function clearTaxHistory() {
+    localStorage.removeItem(TAX_HISTORY_KEY);
+    renderTaxHistory();
+    toast('✅ 已清空历史记录');
+}
+
+/* 从盘源弹窗跳转计算税费 */
+function calcTaxFromProperty(id) {
+    const p = loadProperties().find(x => x.id === id);
+    if (!p) { toast('⚠️ 未找到盘源'); return; }
+    closeGsPreview();
+    switchTab('calc');
+    switchToolView('tax');
+    // 填入总价
+    const price = Number(p.totalPriceWan ?? p.price);
+    if (!isNaN(price) && price > 0) document.getElementById('taxTotalPrice').value = price;
+    // 填入面积
+    const area = Number(p.area ?? p.size);
+    if (!isNaN(area) && area > 0) document.getElementById('taxArea').value = area;
+    // 判断物业类型
+    const type = (p.type || '').toLowerCase();
+    if (type.includes('商铺') || type.includes('写字楼') || type.includes('公寓') || type.includes('商业') || type.includes('车位')) {
+        setTaxType('nonres');
+    } else {
+        setTaxType('residential');
+    }
+    setTimeout(() => { calcTax(); toast('✅ 已自动填入盘源信息并计算'); }, 200);
+}
+
 /* 生成可复制的税费明细文本 */
-function buildTaxCopyText(totalWan, buyerItems, sellerItems, agentFee, agentRate, buyerTotal, sellerTotal, totalTaxWan) {
+function buildTaxCopyText(totalWan, buyerItems, sellerItems, buyerTotal, sellerTotal, totalTaxWan) {
     const typeName = (taxPropertyType === 'residential') ? '住宅/别墅' : '商铺/写字楼/公寓';
     let lines = [];
     lines.push('📋 房产交易税费明细');
     lines.push('━━━━━━━━━━━━━━━━');
     lines.push('物业类型：' + typeName);
-    lines.push('成交价：' + totalWan.toFixed(2) + ' 万元');
+    lines.push('房屋总价：' + totalWan.toFixed(2) + ' 万元');
     lines.push('');
     lines.push('【👤 买方税费】合计 ' + (buyerTotal / 10000).toFixed(2) + ' 万元');
     buyerItems.forEach(([label, rate, val]) => {
@@ -4980,11 +5056,9 @@ function buildTaxCopyText(totalWan, buyerItems, sellerItems, agentFee, agentRate
     sellerItems.forEach(([label, rate, val]) => {
         lines.push('  ' + label + '（' + rate + '）：' + (val > 0 ? (val / 10000).toFixed(2) + ' 万元' : '免征'));
     });
-    lines.push('');
-    lines.push('【中介费】' + agentRate + '%：' + (agentFee / 10000).toFixed(2) + ' 万元');
     lines.push('━━━━━━━━━━━━━━━━');
     lines.push('💰 税费合计：' + totalTaxWan.toFixed(2) + ' 万元');
-    lines.push('💵 购房总成本（房价+税费+中介）：' + (totalWan + totalTaxWan).toFixed(2) + ' 万元');
+    lines.push('💵 房价+税费合计：' + (totalWan + totalTaxWan).toFixed(2) + ' 万元');
     lines.push('');
     lines.push('（依据广州2026最新政策估算，实际以税局核定为准）');
     return lines.join('\n');
