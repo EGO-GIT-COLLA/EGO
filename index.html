@@ -211,6 +211,22 @@
         .theme-swatch .swatch-check { position: absolute; top: 4px; right: 6px; font-size: 12px; display: none; }
         .theme-swatch.active .swatch-check { display: block; }
 
+        /* 跟进记录 */
+        .followup-box { margin-top: 6px; border: 1px solid var(--card-border); border-radius: 10px; padding: 10px 12px; background: var(--bg-soft); }
+        .followup-input-row { display: flex; gap: 8px; margin-bottom: 8px; }
+        .followup-input-row textarea { flex: 1; min-height: 44px; resize: vertical; padding: 8px 10px; border: 1px solid var(--input-border); border-radius: 8px; background: var(--input-bg); color: var(--text); font-size: 13px; font-family: inherit; }
+        .followup-input-row textarea:focus { outline: none; border-color: var(--accent); }
+        .followup-add-btn { flex-shrink: 0; align-self: flex-end; padding: 8px 14px; border: 1px solid var(--accent); color: var(--accent); background: transparent; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; white-space: nowrap; }
+        .followup-add-btn:hover { background: var(--accent); color: #fff; }
+        .followup-list { max-height: 240px; overflow-y: auto; }
+        .followup-item { padding: 8px 10px; margin-bottom: 6px; background: var(--card); border: 1px solid var(--card-border); border-radius: 8px; border-left: 3px solid var(--accent); }
+        .followup-item:last-child { margin-bottom: 0; }
+        .followup-time { font-size: 11px; color: var(--text-hint); margin-bottom: 3px; display: flex; justify-content: space-between; align-items: center; }
+        .followup-time .fu-del { cursor: pointer; color: var(--danger); font-size: 12px; opacity: 0.7; }
+        .followup-time .fu-del:hover { opacity: 1; }
+        .followup-text { font-size: 13px; color: var(--text-sub); line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+        .followup-empty { font-size: 12px; color: var(--text-mute); text-align: center; padding: 8px; }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
             background: var(--bg);
@@ -1882,6 +1898,17 @@
                 </div>
 
                 <div class="form-group" style="margin-bottom:14px;">
+                    <label>📝 跟进记录 <span class="muted">（每次添加自动记录日期时间）</span></label>
+                    <div class="followup-box">
+                        <div class="followup-input-row">
+                            <textarea id="cusFollowupInput" placeholder="写一条跟进，如：2026-09-05 电话沟通，客户意向A小区…"></textarea>
+                            <button type="button" class="followup-add-btn" onclick="addFollowup('customer')">添加<br>跟进</button>
+                        </div>
+                        <div class="followup-list" id="cusFollowupList"></div>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:14px;">
                     <label>客户图片 <span class="muted">（可上传多张，第一张作为卡片封面）</span></label>
                     <div class="image-upload">
                         <label class="upload-pick">
@@ -2012,6 +2039,17 @@
                 <div class="form-group" style="margin-bottom:14px;">
                     <label>备注信息</label>
                     <textarea id="proNote" placeholder="装修、学区、车位、佣金、税费、看房时间等"></textarea>
+                </div>
+
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label>📝 跟进记录 <span class="muted">（每次添加自动记录日期时间）</span></label>
+                    <div class="followup-box">
+                        <div class="followup-input-row">
+                            <textarea id="proFollowupInput" placeholder="写一条跟进，如：业主同意降价5万，下周二复看…"></textarea>
+                            <button type="button" class="followup-add-btn" onclick="addFollowup('property')">添加<br>跟进</button>
+                        </div>
+                        <div class="followup-list" id="proFollowupList"></div>
+                    </div>
                 </div>
 
                 <div class="form-group" style="margin-bottom:14px;">
@@ -2909,6 +2947,57 @@ if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', renderThemePicker);
 } else {
     renderThemePicker();
+}
+
+/* =========================================================
+ * 跟进记录（客源/盘源通用）
+ * ======================================================= */
+function formatFollowupTime(ts) {
+    const d = new Date(ts);
+    const pad = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+function getFollowupStore(type) {
+    return type === 'customer' ? { arr: () => cusFollowups, set: v => { cusFollowups = v; }, input: 'cusFollowupInput', list: 'cusFollowupList' }
+                               : { arr: () => proFollowups, set: v => { proFollowups = v; }, input: 'proFollowupInput', list: 'proFollowupList' };
+}
+function addFollowup(type) {
+    const s = getFollowupStore(type);
+    const input = document.getElementById(s.input);
+    const text = (input.value || '').trim();
+    if (!text) { toast('⚠️ 请先写跟进内容'); return; }
+    const list = s.arr().slice();
+    list.unshift({ time: Date.now(), text: text });
+    s.set(list);
+    input.value = '';
+    renderFollowupList(type);
+    toast('✅ 已添加跟进记录');
+}
+function deleteFollowup(type, idx) {
+    const s = getFollowupStore(type);
+    const list = s.arr().slice();
+    list.splice(idx, 1);
+    s.set(list);
+    renderFollowupList(type);
+}
+function renderFollowupList(type) {
+    const s = getFollowupStore(type);
+    const box = document.getElementById(s.list);
+    if (!box) return;
+    const list = s.arr();
+    if (!list || list.length === 0) {
+        box.innerHTML = '<div class="followup-empty">暂无跟进记录，写一条试试～</div>';
+        return;
+    }
+    box.innerHTML = list.map((item, idx) => `
+        <div class="followup-item">
+            <div class="followup-time">
+                <span>🕐 ${formatFollowupTime(item.time)}</span>
+                <span class="fu-del" onclick="deleteFollowup('${type}', ${idx})" title="删除这条跟进">删除</span>
+            </div>
+            <div class="followup-text">${escapeHTML(item.text)}</div>
+        </div>
+    `).join('');
 }
 
 /* =========================================================
@@ -4484,6 +4573,8 @@ const IMG_THUMB_MAX = 480;          // 压缩缩略图最大边长（封面/存�
 const IMG_COVER_MAX = 800;          // 大图预览时按需再放大（实际上直接用压缩图也可）
 let cusImages = [];   // 客源表单当前图片（base64，不含前缀也行，统一存 dataURL）
 let proImages = [];   // 盘源表单当前图片
+let cusFollowups = [];  // 客源表单当前跟进记录 [{time, text}]
+let proFollowups = [];  // 盘源表单当前跟进记录
 let imgViewerList = [];
 let imgViewerIdx = 0;
 window.__imgReg = {};  // 卡片渲染时按 id 暂存图片数组，供封面点击大图预览
@@ -4658,15 +4749,18 @@ function resetCustomerForm() {
     cusEditingId = null;
     cusSelectedTags = new Set();
     cusStar = 0;
+    cusFollowups = [];
     document.getElementById('cusFormTitle').textContent = '新增客源';
     document.getElementById('cusFormOp').style.display = 'none';
     document.getElementById('cusSubmitBtn').textContent = '保存客源';
     document.getElementById('cusName').value = '';
     document.getElementById('cusPhone').value = '';
     document.getElementById('cusNote').value = '';
+    document.getElementById('cusFollowupInput').value = '';
     document.querySelectorAll('.star-btn').forEach(b => b.classList.remove('active'));
     resetFormImages('cusImagePreview');
     renderCusTagChips();
+    renderFollowupList('customer');
     hideError('cusError');
 }
 
@@ -4684,6 +4778,7 @@ function submitCustomer() {
         tags: Array.from(cusSelectedTags),
         star: cusStar,
         images: cusImages.slice(),
+        followups: cusFollowups.slice(),
         pinnedAt: Date.now(),
         updatedAt: Date.now(),
         createdAt: cusEditingId ? 0 : Date.now()
@@ -4734,6 +4829,9 @@ function editCustomer(id) {
     document.getElementById('cusName').value = c.name || '';
     document.getElementById('cusPhone').value = c.phone || '';
     document.getElementById('cusNote').value = c.note || '';
+    // 跟进记录回填
+    cusFollowups = Array.isArray(c.followups) ? c.followups.slice() : [];
+    renderFollowupList('customer');
     document.querySelectorAll('.star-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.val) === cusStar));
     cusImages = Array.isArray(c.images) ? c.images.slice() : [];
     renderImagePreview(cusImages, 'cusImagePreview');
@@ -5427,9 +5525,10 @@ function renderProTagFilter() {
 function resetPropertyForm() {
     proEditingId = null;
     proSelectedTags = new Set();
+    proFollowups = [];
     document.getElementById('proFormTitle').textContent = '新增盘源';
     document.getElementById('proFormOp').style.display = 'none';
-    ['proTitle','proPrice','proSize','proOwner','proPhone','proNote','proRentInput','proPasteBox'].forEach(id => {
+    ['proTitle','proPrice','proSize','proOwner','proPhone','proNote','proRentInput','proPasteBox','proFollowupInput'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
@@ -5437,6 +5536,7 @@ function resetPropertyForm() {
     switchProRentType('yearly');
     resetFormImages('proImagePreview');
     renderProTagChips();
+    renderFollowupList('property');
     hideError('proError');
 }
 
@@ -5485,6 +5585,7 @@ function submitProperty() {
         yearlyRentWan: '',
         tags: Array.from(finalTags),
         images: proImages.slice(),
+        followups: proFollowups.slice(),
         pinnedAt: Date.now(),
         updatedAt: Date.now(),
         createdAt: proEditingId ? 0 : Date.now()
@@ -5542,6 +5643,9 @@ function editProperty(id) {
     document.getElementById('proOwner').value = p.owner || '';
     document.getElementById('proPhone').value = p.phone || '';
     document.getElementById('proNote').value = p.note || '';
+    // 跟进记录回填
+    proFollowups = Array.isArray(p.followups) ? p.followups.slice() : [];
+    renderFollowupList('property');
     // 租金回填：优先按保存的 type 和 value
     const rt = (p.rentType === 'monthly' || p.rentType === 'yearly') ? p.rentType : 'yearly';
     switchProRentType(rt);
