@@ -5126,8 +5126,8 @@ function calcTaxFromProperty(id) {
     closeGsPreview();
     switchTab('calc');
     switchToolView('tax');
-    // 填入总价
-    const price = Number(p.totalPriceWan ?? p.price);
+    // 填入总价（loadProperties已normalize，totalPriceWan单位是万元）
+    const price = Number(p.totalPriceWan);
     if (!isNaN(price) && price > 0) document.getElementById('taxTotalPrice').value = price;
     // 填入面积
     const area = Number(p.area ?? p.size);
@@ -6309,15 +6309,18 @@ function typeTagOfLayout(layout, existingTypeTags) {
 function normalizeProperty(p) {
     if (!p || typeof p !== 'object') return p;
     // price / totalPriceWan 统一：
-    //   - 如果只给了 price：单位是"元" → totalPriceWan = price / 10000
-    //   - 如果只给了 totalPriceWan：单位是"万元" → price = totalPriceWan * 10000
-    //   - 如果两个都给：按已给为准
+    //   - totalPriceWan 单位是"万元"
+    //   - price 可能是万元（新数据，如680）或元（旧数据，如6800000），大于10000视为元
     const hasTPW = p.totalPriceWan != null && p.totalPriceWan !== '' && !isNaN(Number(p.totalPriceWan));
     const hasP   = p.price != null && p.price !== '' && !isNaN(Number(p.price));
     const tpwNum = hasTPW ? Number(p.totalPriceWan) : NaN;
     const pNum   = hasP   ? Number(p.price)          : NaN;
-    if (hasTPW && !hasP) p.price = Math.round(tpwNum * 10000);
-    else if (hasP && !hasTPW) p.totalPriceWan = pNum / 10000;
+    if (hasTPW && !hasP) {
+        p.price = Math.round(tpwNum * 10000); // totalPriceWan(万) → price(元)
+    } else if (hasP && !hasTPW) {
+        // price大于10000视为元，否则视为万元
+        p.totalPriceWan = pNum > 10000 ? pNum / 10000 : pNum;
+    }
     // size / area 统一：两边是同一单位（平方米），直接互拷
     const hasA  = p.area != null && p.area !== '' && !isNaN(Number(p.area));
     const hasS  = p.size != null && p.size !== '' && !isNaN(Number(p.size));
@@ -6588,6 +6591,7 @@ function submitProperty() {
         id: proEditingId || uid(),
         title,
         price: priceStr,
+        totalPriceWan: priceStr ? Number(priceStr) : '', // 明确存万元
         size: safeStr(document.getElementById('proSize').value),
         owner: safeStr(document.getElementById('proOwner').value),
         phone: safeStr(document.getElementById('proPhone').value),
