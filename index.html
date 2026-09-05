@@ -2057,7 +2057,7 @@
                     <!-- 利率设置 -->
                     <div id="loanRateCommercialGroup">
                         <div class="form-group">
-                            <label>商业贷款利率 <span class="muted">（首套默认3.0%/二套3.8%，LPR3.5%，可调整）</span></label>
+                            <label>商业贷款利率 <span class="muted">（首套默认3.0%/二套3.5%，LPR3.5%，可调整）</span></label>
                             <div class="input-wrapper">
                                 <input type="number" id="loanCommercialRate" value="3.0" min="0" max="20" step="0.01" oninput="calcLoan(true)">
                                 <span class="prefix prefix-right">%</span>
@@ -2076,7 +2076,7 @@
                     <button type="button" class="btn btn-primary" onclick="calcLoan()">计算房贷</button>
                     <div class="err" id="loanError"></div>
                     <div style="margin-top:10px;font-size:11.5px;color:var(--text-hint);line-height:1.6;">
-                        📌 广州2026年9月最新：5年期LPR 3.5%（连续15个月不变），首套商贷主流3.0%（LPR-50bp），二套商贷3.8%；公积金首套2.6%/二套3.075%。商贷最长40年，公积金最长30年。仅供参考，以银行审批为准。
+                        📌 广州2026年9月最新：5年期LPR 3.5%（连续15个月不变），首套商贷主流3.0%（LPR-50bp），二套商贷3.5%；公积金首套2.6%/二套3.075%。商贷最长40年，公积金最长30年。仅供参考，以银行审批为准。
                     </div>
                 </div>
                 <div class="result-card" id="loanResultCard">
@@ -5055,14 +5055,16 @@ function calcTax(silent) {
     window.__taxResultText = buildTaxCopyText(totalWan, buyerItems, sellerItems, buyerTotal, sellerTotal, totalTaxWan);
     // 保存历史记录
     if (!silent) saveTaxHistory({ totalWan, buyerTotal, sellerTotal, totalTaxWan, propertyType: taxPropertyType, area: taxPropertyType === 'residential' ? parseFloat(document.getElementById('taxArea').value) : null, houseCount: taxHouseCount, holdType: taxHoldType, originWan: taxPropertyType === 'nonres' ? (parseFloat(document.getElementById('taxOriginPrice').value) || 0) : null, vatMode: taxVatMode, lvtMode: taxLvtMode, time: Date.now() });
-    // 自动滚动到结果
-    setTimeout(() => {
-        const card = document.getElementById('taxResultCard');
-        if (card) {
-            const y = card.getBoundingClientRect().top + window.pageYOffset - 70;
-            window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
-        }
-    }, 150);
+    // 自动滚动到结果（仅点击计算按钮时，输入过程不跳转）
+    if (!silent) {
+        setTimeout(() => {
+            const card = document.getElementById('taxResultCard');
+            if (card) {
+                const y = card.getBoundingClientRect().top + window.pageYOffset - 70;
+                window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+            }
+        }, 150);
+    }
 }
 
 /* ===== 税费历史记录 ===== */
@@ -5292,7 +5294,7 @@ function setLoanHouseType(t) {
         document.getElementById('loanCommercialRate').value = '3.0';
         document.getElementById('loanFundRate').value = '2.6';
     } else {
-        document.getElementById('loanCommercialRate').value = '3.8';
+        document.getElementById('loanCommercialRate').value = '3.5';
         document.getElementById('loanFundRate').value = '3.075';
     }
     calcLoan(true);
@@ -5507,14 +5509,16 @@ function calcLoan(silent) {
     // 存储供复制
     window.__loanResultText = buildLoanCopyText(totalWan, downPayment, totalLoan, typeName, years, loanRepay, rows, totalMonthly, firstMonth, lastMonth, decrease, totalInterest, totalPay);
 
-    // 自动滚动
-    setTimeout(() => {
-        const card = document.getElementById('loanResultCard');
-        if (card) {
-            const y = card.getBoundingClientRect().top + window.pageYOffset - 70;
-            window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
-        }
-    }, 150);
+    // 自动滚动（仅点击计算按钮时，输入过程不跳转）
+    if (!silent) {
+        setTimeout(() => {
+            const card = document.getElementById('loanResultCard');
+            if (card) {
+                const y = card.getBoundingClientRect().top + window.pageYOffset - 70;
+                window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+            }
+        }, 150);
+    }
 }
 
 /* 生成房贷复制文本 */
