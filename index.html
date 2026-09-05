@@ -1935,7 +1935,7 @@
                         📌 依据广州2026最新政策：住宅增值税不满2年按3%征收（2026.1.1起），满2年免征；非住宅增值税5%+附加0.6%。仅供参考，以税局核定为准。
                     </div>
                 </div>
-                <div class="result-card" id="taxResultCard" style="display:none;">
+                <div class="result-card" id="taxResultCard">
                     <div style="display:flex;justify-content:space-between;align-items:center;">
                         <div class="result-label">税费合计</div>
                         <button type="button" class="btn btn-ghost" style="padding:6px 12px;font-size:12px;color:var(--accent);border-color:var(--accent);" onclick="copyTaxResult()">📋 一键复制</button>
@@ -1986,7 +1986,7 @@
                     <button type="button" class="btn btn-primary" onclick="calcLoan()">计算房贷</button>
                     <div class="err" id="loanError"></div>
                 </div>
-                <div class="result-card" id="loanResultCard" style="display:none;">
+                <div class="result-card" id="loanResultCard">
                     <div class="result-label">月供（等额本息）</div>
                     <div class="result-value" id="loanMonthly">0<span class="pct">元/月</span></div>
                     <div style="margin-top:12px;">
@@ -4813,7 +4813,7 @@ function calcTax(silent) {
     const totalWan = parseFloat(document.getElementById('taxTotalPrice').value);
     const agentRate = parseFloat(document.getElementById('taxAgentRate').value) || 0;
     const fail = (msg) => {
-        document.getElementById('taxResultCard').style.display = 'none';
+        document.getElementById('taxResultCard').classList.remove('show');
         if (silent) return;
         return showError('taxError', msg);
     };
@@ -4949,7 +4949,7 @@ function calcTax(silent) {
             <span>💰 购房总成本（房价+全部税费+中介）</span>
             <span>${(totalWan + totalTaxWan).toFixed(2)} 万元</span>
         </div>`;
-    document.getElementById('taxResultCard').style.display = '';
+    document.getElementById('taxResultCard').classList.add('show');
     // 存储结果供一键复制
     window.__taxResultText = buildTaxCopyText(totalWan, buyerItems, sellerItems, agentFee, agentRate, buyerTotal, sellerTotal, totalTaxWan);
     // 自动滚动到结果
@@ -5041,7 +5041,7 @@ function calcLoan(silent) {
     const customY = parseFloat(document.getElementById('loanYearsCustom').value);
     const years = (!isNaN(customY) && customY > 0) ? customY : loanYears;
     const fail = (msg) => {
-        document.getElementById('loanResultCard').style.display = 'none';
+        document.getElementById('loanResultCard').classList.remove('show');
         if (silent) return;
         return showError('loanError', msg);
     };
@@ -5103,7 +5103,7 @@ function calcLoan(silent) {
             💡 等额本金总利息比等额本息少 <b>${((totalInterestEqual - totalInterestPrincipal) / 10000).toFixed(2)} 万元</b>，但前期月供压力更大。
         </div>
     `;
-    document.getElementById('loanResultCard').style.display = '';
+    document.getElementById('loanResultCard').classList.add('show');
 }
 
 /* =========================================================
