@@ -4941,11 +4941,7 @@ function calcTax(silent) {
 
     document.getElementById('taxBreakdown').innerHTML =
         renderItems(buyerItems, buyerTotal, '👤 买方税费', '#4fc3f7') +
-        renderItems(sellerItems, sellerTotal, '🏢 卖方税费', '#ffb74d') +
-        `<div style="display:flex;justify-content:space-between;padding:6px 0;font-weight:700;color:var(--accent);margin-top:6px;font-size:14px;">
-            <span>💰 房价+税费合计</span>
-            <span>${(totalWan + totalTaxWan).toFixed(2)} 万元</span>
-        </div>`;
+        renderItems(sellerItems, sellerTotal, '🏢 卖方税费', '#ffb74d');
     document.getElementById('taxResultCard').classList.add('show');
     // 存储结果供一键复制
     window.__taxResultText = buildTaxCopyText(totalWan, buyerItems, sellerItems, buyerTotal, sellerTotal, totalTaxWan);
@@ -5058,7 +5054,6 @@ function buildTaxCopyText(totalWan, buyerItems, sellerItems, buyerTotal, sellerT
     });
     lines.push('━━━━━━━━━━━━━━━━');
     lines.push('💰 税费合计：' + totalTaxWan.toFixed(2) + ' 万元');
-    lines.push('💵 房价+税费合计：' + (totalWan + totalTaxWan).toFixed(2) + ' 万元');
     lines.push('');
     lines.push('（依据广州2026最新政策估算，实际以税局核定为准）');
     return lines.join('\n');
