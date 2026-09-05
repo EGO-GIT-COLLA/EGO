@@ -1955,7 +1955,7 @@
                     <div class="form-group">
                         <label>房产总价</label>
                         <div class="input-wrapper">
-                            <input type="number" id="loanTotalPrice" placeholder="请输入房产总价（万元）" min="0" step="any" oninput="calcLoan(true)">
+                            <input type="number" id="loanTotalPrice" placeholder="请输入房产总价（万元）" min="0" step="any" oninput="updateLoanAmount(); calcLoan(true)">
                             <span class="prefix prefix-right">万元</span>
                         </div>
                     </div>
@@ -1967,6 +1967,13 @@
                             <button type="button" data-ratio="30" class="active" onclick="setLoanRatio(30)">3成</button>
                             <button type="button" data-ratio="40" onclick="setLoanRatio(40)">4成</button>
                             <button type="button" data-ratio="50" onclick="setLoanRatio(50)">5成</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>贷款金额 <span class="muted">（万元，与总价/首付联动，可手动调整）</span></label>
+                        <div class="input-wrapper">
+                            <input type="number" id="loanAmount" placeholder="贷款金额" min="0" step="any" oninput="onLoanAmountInput()">
+                            <span class="prefix prefix-right">万元</span>
                         </div>
                     </div>
                     <div class="form-group">
@@ -5228,7 +5235,39 @@ function calcPrincipalPayment(principal, monthRate, months) {
 function setLoanRatio(r) {
     loanRatio = r;
     document.querySelectorAll('#tool-loan [data-ratio]').forEach(b => b.classList.toggle('active', Number(b.dataset.ratio) === r));
+    updateLoanAmount();
     // 切换首付后，自动重新分配金额
+    if (loanType === 'combo') autoFillComboAmount();
+    if (loanType === 'fund') autoFillFundOnly();
+    calcLoan(true);
+}
+/* 根据总价和首付比例自动计算贷款金额并填入 */
+function updateLoanAmount() {
+    const totalWan = parseFloat(document.getElementById('loanTotalPrice').value);
+    if (isNaN(totalWan) || totalWan <= 0) {
+        document.getElementById('loanAmount').value = '';
+        return;
+    }
+    const loan = totalWan * (1 - loanRatio / 100);
+    document.getElementById('loanAmount').value = loan.toFixed(2);
+}
+/* 用户手动改贷款金额时，反推首付比例并更新按钮高亮 */
+function onLoanAmountInput() {
+    const totalWan = parseFloat(document.getElementById('loanTotalPrice').value);
+    const loanWan = parseFloat(document.getElementById('loanAmount').value);
+    if (isNaN(totalWan) || totalWan <= 0 || isNaN(loanWan) || loanWan <= 0) {
+        calcLoan(true);
+        return;
+    }
+    // 反推首付比例
+    const ratio = Math.round((1 - loanWan / totalWan) * 100);
+    loanRatio = ratio;
+    // 更新按钮高亮（匹配预设值则高亮，否则全部不高亮）
+    const presets = [15, 20, 30, 40, 50];
+    document.querySelectorAll('#tool-loan [data-ratio]').forEach(b => {
+        b.classList.toggle('active', Number(b.dataset.ratio) === ratio);
+    });
+    // 重新分配组合贷金额
     if (loanType === 'combo') autoFillComboAmount();
     if (loanType === 'fund') autoFillFundOnly();
     calcLoan(true);
@@ -5301,11 +5340,18 @@ function setLoanRepay(r) {
     document.getElementById('loanRepayPrincipal').classList.toggle('active', r === 'principal');
     calcLoan(true);
 }
+/* 获取当前贷款金额（万元）：优先用贷款金额输入框，否则从总价和首付比例算 */
+function getLoanAmountWan() {
+    const loanWan = parseFloat(document.getElementById('loanAmount').value);
+    if (!isNaN(loanWan) && loanWan > 0) return loanWan;
+    const totalWan = parseFloat(document.getElementById('loanTotalPrice').value);
+    if (isNaN(totalWan) || totalWan <= 0) return 0;
+    return totalWan * (1 - loanRatio / 100);
+}
 /* 组合贷款自动分配：公积金优先用满最高额度，剩余商贷 */
 function autoFillComboAmount() {
-    const totalWan = parseFloat(document.getElementById('loanTotalPrice').value);
-    if (isNaN(totalWan) || totalWan <= 0) return;
-    const totalLoan = totalWan * (1 - loanRatio / 100);
+    const totalLoan = getLoanAmountWan();
+    if (totalLoan <= 0) return;
     const fundMax = getFundMaxAmount();
     const fundAmount = Math.min(fundMax, totalLoan);
     const commercial = Math.max(0, totalLoan - fundAmount);
@@ -5314,9 +5360,8 @@ function autoFillComboAmount() {
 }
 /* 纯公积金贷款：自动填满最高额度（不超过贷款总额） */
 function autoFillFundOnly() {
-    const totalWan = parseFloat(document.getElementById('loanTotalPrice').value);
-    if (isNaN(totalWan) || totalWan <= 0) return;
-    const totalLoan = totalWan * (1 - loanRatio / 100);
+    const totalLoan = getLoanAmountWan();
+    if (totalLoan <= 0) return;
     const fundMax = getFundMaxAmount();
     const fundAmount = Math.min(fundMax, totalLoan);
     document.getElementById('loanFundAmount').value = fundAmount.toFixed(2);
@@ -5338,8 +5383,9 @@ function calcLoan(silent) {
     if (isNaN(years) || years <= 0 || years > 40) return fail('贷款年限需在1-40年之间');
 
     const total = totalWan * 10000;
-    const downPayment = total * (loanRatio / 100);
-    const totalLoan = total - downPayment;
+    const loanWan = getLoanAmountWan();
+    const totalLoan = loanWan * 10000;
+    const downPayment = total - totalLoan;
     const months = years * 12;
 
     // 确定各部分贷款金额
