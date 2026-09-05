@@ -4101,10 +4101,33 @@ function calcOcrFromFile(file) {
                     resultBox.textContent = '⚠️ 未识别到文字。请确认图片清晰、包含总价/租金等数字后重试，或手动输入。';
                     return;
                 }
-                // 显示识别原文 + 自动填入
+                // 自动填入 + 自动计算，并返回填充摘要
+                const filled = calcFillFromOcr(text);
+                const priceVal = document.getElementById('totalPrice').value;
+                const rentVal = document.getElementById('rentInput').value;
+                const rateEl = document.getElementById('resultRate');
+                const hasResult = rateEl && rateEl.textContent && rateEl.textContent.indexOf('0') !== 0;
+                let msg = '📄 识别原文：\n' + text.trim().slice(0, 200);
+                if (filled && filled.price) {
+                    msg += '\n\n✅ 已自动填入：房产总价 = ' + filled.price + ' 万元';
+                }
+                if (filled && filled.rent) {
+                    msg += '\n✅ 已自动填入：' + (filled.rentType === 'monthly' ? '月租金 = ' + filled.rent + ' 元/月' : '年租金 = ' + filled.rent + ' 万元/年');
+                }
+                if (filled && filled.rate != null && !isNaN(filled.rate)) {
+                    msg += '\n✅ 已自动计算：年回报率 = ' + filled.rate + '%';
+                } else if (priceVal && rentVal) {
+                    msg += '\n✅ 已自动填入并计算完成（见下方结果卡片）';
+                } else {
+                    msg += '\n⚠️ 识别出部分字段：' + (priceVal ? '总价=' + priceVal + '万' : '未识别到总价') + '，' + (rentVal ? '租金=' + rentVal : '未识别到租金') + '。请补充缺失项后点「计算回报率」。';
+                }
                 resultBox.style.display = 'block';
-                resultBox.textContent = '📄 识别结果：\n' + text.trim().slice(0, 400);
-                calcFillFromOcr(text);
+                resultBox.textContent = msg;
+                // 自动滚动到结果卡片，方便查看
+                try {
+                    const rc = document.getElementById('resultCard');
+                    if (rc && rc.classList.contains('show') && rc.scrollIntoView) rc.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                } catch (e) {}
             }).catch(function (err) {
                 status.style.display = 'block';
                 status.textContent = '⚠️ 识别失败：' + ((err && err.message) || '未知错误') + '。可手动输入总价与租金。';
@@ -4146,16 +4169,19 @@ function calcRunOcrWithWorker(imageDataUrl) {
     });
 }
 
-/** 从 OCR 文本中提取总价与租金并填入表单 */
+/** 从 OCR 文本中提取总价与租金并填入表单；返回 {price, rent, rentType, rate} 摘要 */
 function calcFillFromOcr(text) {
-    if (!text) return;
-    const t = text.replace(/[,，\s]/g, '');
+    const summary = { price: null, rent: null, rentType: null, rate: null };
+    if (!text) return summary;
+    // 归一化：去空格/逗号/全角数字转半角
+    let t = text.replace(/[,，\s]/g, '');
+    t = t.replace(/[０-９]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0); });
     let priceFound = null;
     let rentFound = null;
     let rentIsMonthly = null;   // true=月租金，false=年租金
 
     // —— 总价提取 ——
-    // 模式：总价 / 总金额 / 总售价 / 售价 / 价格 后跟数字
+    // 模式1：总价/售价/房价/价格 后跟数字+万元/万
     const pricePatterns = [
         /(?:总价|总金额|总售价|总房价|售价|房价|价格|总价约|约)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:万元|万)/,
         /(?:总价|总金额|总售价|总房价|售价|房价|价格)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)\s*万/,
@@ -4176,15 +4202,21 @@ function calcFillFromOcr(text) {
             break;
         }
     }
-    // 兜底：文本中最大数字且 >100 视为总价（万元），且排除是租金的情况
+    // 兜底1：文本中"数字+万元/万"的最大值（且不是租金上下文）
     if (priceFound == null) {
         const nums = t.match(/([0-9]+(?:\.[0-9]+)?)(?:万元|万)/g) || [];
         const vals = nums.map(n => parseFloat(n.replace(/[万元万]/g, ''))).filter(n => n > 0);
         if (vals.length) priceFound = Math.max(...vals);
     }
+    // 兜底2：若只有"3800000元/380万"等整额，取最大金额数字
+    if (priceFound == null) {
+        const bigNums = t.match(/([0-9]+(?:\.[0-9]+)?)(?:元|rmb|¥)/g) || [];
+        const vals = bigNums.map(n => parseFloat(n.replace(/[元rmb¥]/g, ''))).filter(n => n >= 100000);
+        if (vals.length) priceFound = Math.round(Math.max(...vals) / 10000 * 100) / 100;
+    }
 
     // —— 租金提取 ——
-    // 模式：年租金 / 租金(每年) 后跟数字+万
+    // 模式：年租金/月租金 后跟数字
     const rentPatterns = [
         /(?:年租金|年租|租金\(?年\)?|每年租金|年租金约)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:万元|万)/,
         /([0-9]+(?:\.[0-9]+)?)\s*万元\s*(?:\/年|每年|年租金|年租)/,
@@ -4221,20 +4253,29 @@ function calcFillFromOcr(text) {
     // —— 填入表单 ——
     if (priceFound != null && priceFound > 0) {
         document.getElementById('totalPrice').value = priceFound;
+        summary.price = priceFound;
     }
     if (rentFound != null && rentFound >= 0) {
         if (rentIsMonthly) {
-            // 月租金（元/月）→ 切到月租金模式并填入
             if (currentRentType !== 'monthly') switchRentType('monthly');
             document.getElementById('rentInput').value = rentFound;
+            summary.rent = rentFound;
+            summary.rentType = 'monthly';
         } else {
-            // 年租金（万元/年）→ 切到年租金模式并填入
             if (currentRentType !== 'yearly') switchRentType('yearly');
             document.getElementById('rentInput').value = rentFound;
+            summary.rent = rentFound;
+            summary.rentType = 'yearly';
         }
     }
     // 重新计算
     if (typeof calculate === 'function') calculate();
+    const rateEl = document.getElementById('resultRate');
+    if (rateEl && rateEl.textContent) {
+        const rv = parseFloat(rateEl.textContent);
+        if (!isNaN(rv)) summary.rate = rv;
+    }
+    return summary;
 }
 
 
