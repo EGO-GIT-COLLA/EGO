@@ -1775,7 +1775,7 @@
         <div class="app-header">
             <div>
                 <h1>房产助手</h1>
-                <p>回报率计算 · 客源管理 · 盘源管理</p>
+                <p>房产工具 · 客源管理 · 盘源管理</p>
             </div>
             <div id="headerUserBox" class="header-user" onclick="headerUserClick(event)" title="点击前往账号管理">
                 <img id="headerAvatar" src="" alt="" style="display:none;">
@@ -1787,8 +1787,16 @@
             </div>
         </div>
 
-        <!-- ========== Tab 1：回报计算 ========== -->
+        <!-- ========== Tab 1：工具（二级菜单：回报率/税费/房贷） ========== -->
         <div id="tab-calc" class="tab-pane">
+            <div class="sub-nav">
+                <button type="button" class="active" id="toolNavRoi" onclick="switchToolView('roi')">📊 回报率</button>
+                <button type="button" id="toolNavTax" onclick="switchToolView('tax')">💰 税费计算</button>
+                <button type="button" id="toolNavLoan" onclick="switchToolView('loan')">🏦 房贷计算</button>
+            </div>
+
+            <!-- ===== 子面板1：回报率计算 ===== -->
+            <div id="tool-roi">
             <form id="calcForm" onsubmit="return false;">
                 <!-- 拍照/相册 智能识别 -->
                 <div class="form-group" style="margin-bottom:16px;">
@@ -1845,6 +1853,106 @@
                     </div>
                 </div>
             </div>
+            </div><!-- /tool-roi -->
+
+            <!-- ===== 子面板2：税费计算 ===== -->
+            <div id="tool-tax" style="display:none;">
+                <div class="sub-card" style="padding:16px 14px;">
+                    <div class="form-group">
+                        <label>房产总价</label>
+                        <div class="input-wrapper">
+                            <input type="number" id="taxTotalPrice" placeholder="请输入房产总价（万元）" min="0" step="any" oninput="calcTax(true)">
+                            <span class="prefix prefix-right">万元</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>建筑面积</label>
+                        <div class="input-wrapper">
+                            <input type="number" id="taxArea" placeholder="请输入面积（㎡）" min="0" step="any" oninput="calcTax(true)">
+                            <span class="prefix prefix-right">㎡</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>购房情况</label>
+                        <div class="seg">
+                            <button type="button" id="taxFirstYes" class="active" onclick="setTaxFirst(true)">首套</button>
+                            <button type="button" id="taxFirstNo" onclick="setTaxFirst(false)">二套及以上</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>房屋情况</label>
+                        <div class="seg" style="grid-template-columns:1fr 1fr 1fr;">
+                            <button type="button" id="taxFull5Only" class="active" onclick="setTaxHouse('full5only')">满五唯一</button>
+                            <button type="button" id="taxFull2" onclick="setTaxHouse('full2')">满二</button>
+                            <button type="button" id="taxNormal" onclick="setTaxHouse('normal')">不满二</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>中介费率 <span class="muted">（可调整，默认2%）</span></label>
+                        <div class="input-wrapper">
+                            <input type="number" id="taxAgentRate" value="2" min="0" max="10" step="0.1" oninput="calcTax(true)">
+                            <span class="prefix prefix-right">%</span>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="calcTax()">计算税费</button>
+                    <div class="err" id="taxError"></div>
+                </div>
+                <div class="result-card" id="taxResultCard" style="display:none;">
+                    <div class="result-label">税费合计</div>
+                    <div class="result-value" id="taxTotal">0<span class="pct">万元</span></div>
+                    <div style="margin-top:12px;">
+                        <div id="taxBreakdown" style="font-size:13.5px;color:var(--text-sub);line-height:2;"></div>
+                    </div>
+                </div>
+            </div><!-- /tool-tax -->
+
+            <!-- ===== 子面板3：房贷计算 ===== -->
+            <div id="tool-loan" style="display:none;">
+                <div class="sub-card" style="padding:16px 14px;">
+                    <div class="form-group">
+                        <label>房产总价</label>
+                        <div class="input-wrapper">
+                            <input type="number" id="loanTotalPrice" placeholder="请输入房产总价（万元）" min="0" step="any" oninput="calcLoan(true)">
+                            <span class="prefix prefix-right">万元</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>首付比例</label>
+                        <div class="seg" style="grid-template-columns:repeat(4,1fr);">
+                            <button type="button" data-ratio="20" onclick="setLoanRatio(20)">2成</button>
+                            <button type="button" data-ratio="30" class="active" onclick="setLoanRatio(30)">3成</button>
+                            <button type="button" data-ratio="40" onclick="setLoanRatio(40)">4成</button>
+                            <button type="button" data-ratio="50" onclick="setLoanRatio(50)">5成</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>贷款年限</label>
+                        <div class="seg" style="grid-template-columns:repeat(4,1fr);">
+                            <button type="button" data-years="10" onclick="setLoanYears(10)">10年</button>
+                            <button type="button" data-years="20" onclick="setLoanYears(20)">20年</button>
+                            <button type="button" data-years="30" class="active" onclick="setLoanYears(30)">30年</button>
+                            <button type="button" data-years="custom" onclick="setLoanYears('custom')">自定义</button>
+                        </div>
+                        <input type="number" id="loanYearsCustom" style="display:none;margin-top:8px;" placeholder="自定义年限（年）" min="1" max="30" oninput="calcLoan(true)">
+                    </div>
+                    <div class="form-group">
+                        <label>贷款年利率 <span class="muted">（当前商贷约3.1%-3.5%）</span></label>
+                        <div class="input-wrapper">
+                            <input type="number" id="loanRate" value="3.2" min="0" max="20" step="0.01" oninput="calcLoan(true)">
+                            <span class="prefix prefix-right">%</span>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="calcLoan()">计算房贷</button>
+                    <div class="err" id="loanError"></div>
+                </div>
+                <div class="result-card" id="loanResultCard" style="display:none;">
+                    <div class="result-label">月供（等额本息）</div>
+                    <div class="result-value" id="loanMonthly">0<span class="pct">元/月</span></div>
+                    <div style="margin-top:12px;">
+                        <div id="loanBreakdown" style="font-size:13.5px;color:var(--text-sub);line-height:2;"></div>
+                    </div>
+                </div>
+            </div><!-- /tool-loan -->
         </div>
 
         <!-- ========== Tab 2：客源 ========== -->
@@ -2293,7 +2401,7 @@ grant insert, update, select on sb_sync_bucket to anon;
         </div>
 
         <div class="tabs" role="tablist">
-            <button type="button" class="tab-btn" data-icon="📊" data-tab="calc" onclick="switchTab('calc')">回报计算</button>
+            <button type="button" class="tab-btn" data-icon="🧰" data-tab="calc" onclick="switchTab('calc')">工具</button>
             <button type="button" class="tab-btn" id="tabBtnCustomer" data-icon="👥" data-tab="customer" onclick="switchTab('customer')">客源</button>
             <button type="button" class="tab-btn active" data-icon="🔎" data-tab="search" onclick="switchTab('search')">搜索</button>
             <button type="button" class="tab-btn" data-icon="🏘️" data-tab="property" onclick="switchTab('property')">盘源</button>
@@ -4584,6 +4692,180 @@ function calculate(silent) {
     document.getElementById('detailPrice').textContent = fmtMoney(totalPrice);
     document.getElementById('detailRent').textContent = fmtMoney(yearlyRent);
     document.getElementById('resultCard').classList.add('show');
+}
+
+/* =========================================================
+ * 工具二级菜单切换（回报率/税费/房贷）
+ * ======================================================= */
+function switchToolView(name) {
+    ['roi', 'tax', 'loan'].forEach(v => {
+        const el = document.getElementById('tool-' + v);
+        if (el) el.style.display = (v === name) ? '' : 'none';
+    });
+    document.querySelectorAll('#tab-calc .sub-nav button').forEach(b => b.classList.remove('active'));
+    const map = { roi: 'toolNavRoi', tax: 'toolNavTax', loan: 'toolNavLoan' };
+    const btn = document.getElementById(map[name]);
+    if (btn) btn.classList.add('active');
+}
+
+/* =========================================================
+ * 税费计算（广州二手房参考）
+ * ======================================================= */
+let taxIsFirst = true;
+let taxHouseType = 'full5only'; // full5only / full2 / normal
+function setTaxFirst(isFirst) {
+    taxIsFirst = isFirst;
+    document.getElementById('taxFirstYes').classList.toggle('active', isFirst);
+    document.getElementById('taxFirstNo').classList.toggle('active', !isFirst);
+    calcTax(true);
+}
+function setTaxHouse(type) {
+    taxHouseType = type;
+    ['full5only', 'full2', 'normal'].forEach(t => {
+        const el = document.getElementById('tax' + t.charAt(0).toUpperCase() + t.slice(1));
+        if (el) el.classList.toggle('active', t === type);
+    });
+    calcTax(true);
+}
+function calcTax(silent) {
+    hideError('taxError');
+    const totalWan = parseFloat(document.getElementById('taxTotalPrice').value);
+    const area = parseFloat(document.getElementById('taxArea').value);
+    const agentRate = parseFloat(document.getElementById('taxAgentRate').value) || 0;
+    const fail = (msg) => {
+        document.getElementById('taxResultCard').style.display = 'none';
+        if (silent) return;
+        return showError('taxError', msg);
+    };
+    if (isNaN(totalWan) || totalWan <= 0) return fail('请输入房产总价');
+    if (isNaN(area) || area <= 0) return fail('请输入建筑面积');
+
+    const total = totalWan * 10000; // 元
+    // 契税：首套90㎡以下1%，90㎡以上1.5%；二套90㎡以下1%，90㎡以上2%
+    let deedRate;
+    if (area <= 90) deedRate = 0.01;
+    else deedRate = taxIsFirst ? 0.015 : 0.02;
+    const deedTax = total * deedRate;
+    // 个税：满五唯一免征，否则1%
+    const incomeTax = (taxHouseType === 'full5only') ? 0 : total * 0.01;
+    // 增值税：满二免征，否则5.3%
+    const vatTax = (taxHouseType === 'normal') ? total * 0.053 : 0;
+    // 中介费
+    const agentFee = total * (agentRate / 100);
+    // 合计
+    const totalTax = deedTax + incomeTax + vatTax + agentFee;
+    const totalTaxWan = totalTax / 10000;
+
+    document.getElementById('taxTotal').innerHTML = totalTaxWan.toFixed(2) + '<span class="pct">万元</span>';
+    const rows = [
+        ['契税', deedRate * 100 + '%', deedTax],
+        ['个人所得税', (taxHouseType === 'full5only' ? '免征（满五唯一）' : '1%'), incomeTax],
+        ['增值税及附加', (taxHouseType === 'normal' ? '5.3%（不满二）' : '免征（满二）'), vatTax],
+        ['中介费', agentRate + '%', agentFee],
+    ];
+    document.getElementById('taxBreakdown').innerHTML = rows.map(([label, rate, val]) =>
+        `<div style="display:flex;justify-content:space-between;border-bottom:1px dashed var(--chip-border);padding:4px 0;">
+            <span>${label}（${rate}）</span>
+            <span style="font-weight:600;">${(val / 10000).toFixed(2)} 万元</span>
+        </div>`
+    ).join('') + `<div style="display:flex;justify-content:space-between;padding:6px 0;font-weight:700;color:var(--accent);margin-top:4px;">
+        <span>💰 购房总成本（房价+税费）</span>
+        <span>${(totalWan + totalTaxWan).toFixed(2)} 万元</span>
+    </div>`;
+    document.getElementById('taxResultCard').style.display = '';
+}
+
+/* =========================================================
+ * 房贷计算（等额本息 + 等额本金）
+ * ======================================================= */
+let loanRatio = 30;
+let loanYears = 30;
+function setLoanRatio(r) {
+    loanRatio = r;
+    document.querySelectorAll('#tool-loan [data-ratio]').forEach(b => b.classList.toggle('active', Number(b.dataset.ratio) === r));
+    calcLoan(true);
+}
+function setLoanYears(y) {
+    if (y === 'custom') {
+        document.getElementById('loanYearsCustom').style.display = '';
+        document.querySelectorAll('#tool-loan [data-years]').forEach(b => b.classList.toggle('active', b.dataset.years === 'custom'));
+    } else {
+        loanYears = Number(y);
+        document.getElementById('loanYearsCustom').style.display = 'none';
+        document.querySelectorAll('#tool-loan [data-years]').forEach(b => b.classList.toggle('active', Number(b.dataset.years) === Number(y)));
+    }
+    calcLoan(true);
+}
+function calcLoan(silent) {
+    hideError('loanError');
+    const totalWan = parseFloat(document.getElementById('loanTotalPrice').value);
+    const rateYear = parseFloat(document.getElementById('loanRate').value);
+    const customY = parseFloat(document.getElementById('loanYearsCustom').value);
+    const years = (!isNaN(customY) && customY > 0) ? customY : loanYears;
+    const fail = (msg) => {
+        document.getElementById('loanResultCard').style.display = 'none';
+        if (silent) return;
+        return showError('loanError', msg);
+    };
+    if (isNaN(totalWan) || totalWan <= 0) return fail('请输入房产总价');
+    if (isNaN(rateYear) || rateYear <= 0) return fail('请输入贷款年利率');
+    if (isNaN(years) || years <= 0) return fail('请输入贷款年限');
+
+    const total = totalWan * 10000;
+    const downPayment = total * (loanRatio / 100);
+    const loanAmount = total - downPayment;
+    const months = years * 12;
+    const monthRate = rateYear / 100 / 12;
+
+    // 等额本息：月供 = 贷款额 × 月利率 × (1+月利率)^n / [(1+月利率)^n - 1]
+    let monthlyEqual, totalInterestEqual, totalPayEqual;
+    if (monthRate > 0) {
+        const pow = Math.pow(1 + monthRate, months);
+        monthlyEqual = loanAmount * monthRate * pow / (pow - 1);
+        totalPayEqual = monthlyEqual * months;
+        totalInterestEqual = totalPayEqual - loanAmount;
+    } else {
+        monthlyEqual = loanAmount / months;
+        totalPayEqual = loanAmount;
+        totalInterestEqual = 0;
+    }
+
+    // 等额本金：首月月供 = 贷款额/n + 贷款额×月利率；总利息 = (n+1)×贷款额×月利率/2
+    const firstMonthPrincipal = loanAmount / months;
+    const monthlyFirst = firstMonthPrincipal + loanAmount * monthRate;
+    const totalInterestPrincipal = (months + 1) * loanAmount * monthRate / 2;
+    const totalPayPrincipal = loanAmount + totalInterestPrincipal;
+    const monthlyDecrease = firstMonthPrincipal * monthRate; // 每月递减
+
+    document.getElementById('loanMonthly').innerHTML = monthlyEqual.toFixed(0) + '<span class="pct">元/月</span>';
+    document.getElementById('loanBreakdown').innerHTML = `
+        <div style="display:flex;justify-content:space-between;border-bottom:1px dashed var(--chip-border);padding:4px 0;">
+            <span>首付（${loanRatio}成）</span><span style="font-weight:600;">${(downPayment / 10000).toFixed(2)} 万元</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;border-bottom:1px dashed var(--chip-border);padding:4px 0;">
+            <span>贷款总额</span><span style="font-weight:600;">${(loanAmount / 10000).toFixed(2)} 万元</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;border-bottom:1px dashed var(--chip-border);padding:4px 0;">
+            <span>贷款年限 / 年利率</span><span style="font-weight:600;">${years}年 / ${rateYear}%</span>
+        </div>
+        <div style="margin-top:8px;padding:8px 10px;background:var(--bg-soft);border-radius:8px;">
+            <div style="font-weight:700;color:var(--accent);margin-bottom:4px;">📊 等额本息</div>
+            <div style="display:flex;justify-content:space-between;padding:2px 0;"><span>月供</span><span style="font-weight:600;">${monthlyEqual.toFixed(0)} 元</span></div>
+            <div style="display:flex;justify-content:space-between;padding:2px 0;"><span>总利息</span><span>${(totalInterestEqual / 10000).toFixed(2)} 万元</span></div>
+            <div style="display:flex;justify-content:space-between;padding:2px 0;"><span>还款总额</span><span>${(totalPayEqual / 10000).toFixed(2)} 万元</span></div>
+        </div>
+        <div style="margin-top:8px;padding:8px 10px;background:var(--bg-soft);border-radius:8px;">
+            <div style="font-weight:700;color:var(--accent);margin-bottom:4px;">📊 等额本金</div>
+            <div style="display:flex;justify-content:space-between;padding:2px 0;"><span>首月月供</span><span style="font-weight:600;">${monthlyFirst.toFixed(0)} 元</span></div>
+            <div style="display:flex;justify-content:space-between;padding:2px 0;"><span>每月递减</span><span>${monthlyDecrease.toFixed(2)} 元</span></div>
+            <div style="display:flex;justify-content:space-between;padding:2px 0;"><span>总利息</span><span>${(totalInterestPrincipal / 10000).toFixed(2)} 万元</span></div>
+            <div style="display:flex;justify-content:space-between;padding:2px 0;"><span>还款总额</span><span>${(totalPayPrincipal / 10000).toFixed(2)} 万元</span></div>
+        </div>
+        <div style="margin-top:8px;padding:6px 10px;background:rgba(212,175,55,0.1);border-radius:8px;font-size:12.5px;color:var(--text-hint);">
+            💡 等额本金总利息比等额本息少 <b>${((totalInterestEqual - totalInterestPrincipal) / 10000).toFixed(2)} 万元</b>，但前期月供压力更大。
+        </div>
+    `;
+    document.getElementById('loanResultCard').style.display = '';
 }
 
 /* =========================================================
