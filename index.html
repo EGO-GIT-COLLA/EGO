@@ -1882,20 +1882,21 @@
                             </div>
                         </div>
                         <div class="form-group">
-                            <label>购房套数（买方）</label>
-                            <div class="seg" style="grid-template-columns:1fr 1fr 1fr;">
-                                <button type="button" id="taxHouse1" class="active" onclick="setTaxHouseCount(1)">首套</button>
-                                <button type="button" id="taxHouse2" onclick="setTaxHouseCount(2)">二套</button>
-                                <button type="button" id="taxHouse3" onclick="setTaxHouseCount(3)">三套及以上</button>
-                            </div>
-                        </div>
-                        <div class="form-group">
                             <label>卖方持有情况</label>
                             <div class="seg" style="grid-template-columns:1fr 1fr 1fr;">
                                 <button type="button" id="taxHoldFull5" class="active" onclick="setTaxHold('full5only')">满五唯一</button>
                                 <button type="button" id="taxHoldFull2" onclick="setTaxHold('full2')">满二不满五</button>
                                 <button type="button" id="taxHoldLess2" onclick="setTaxHold('less2')">不满二</button>
                             </div>
+                        </div>
+                    </div>
+                    <!-- 购房套数（两种模式都显示，非住宅置灰） -->
+                    <div class="form-group" id="taxHouseCountGroup">
+                        <label>购房套数（买方） <span id="taxHouseCountHint" class="muted" style="display:none;">（非住宅统一3%，不区分套数）</span></label>
+                        <div class="seg" style="grid-template-columns:1fr 1fr 1fr;">
+                            <button type="button" id="taxHouse1" class="active" onclick="setTaxHouseCount(1)">首套</button>
+                            <button type="button" id="taxHouse2" onclick="setTaxHouseCount(2)">二套</button>
+                            <button type="button" id="taxHouse3" onclick="setTaxHouseCount(3)">三套及以上</button>
                         </div>
                     </div>
                     <!-- 非住宅专属字段 -->
@@ -1948,7 +1949,7 @@
                 </div>
             </div><!-- /tool-tax -->
 
-            <!-- ===== 子面板3：房贷计算 ===== -->
+            <!-- ===== 子面板3：房贷计算（广州2026最新政策，最长40年） ===== -->
             <div id="tool-loan" style="display:none;">
                 <div class="sub-card" style="padding:16px 14px;">
                     <div class="form-group">
@@ -1960,7 +1961,8 @@
                     </div>
                     <div class="form-group">
                         <label>首付比例</label>
-                        <div class="seg" style="grid-template-columns:repeat(4,1fr);">
+                        <div class="seg" style="grid-template-columns:repeat(5,1fr);">
+                            <button type="button" data-ratio="15" onclick="setLoanRatio(15)">1.5成</button>
                             <button type="button" data-ratio="20" onclick="setLoanRatio(20)">2成</button>
                             <button type="button" data-ratio="30" class="active" onclick="setLoanRatio(30)">3成</button>
                             <button type="button" data-ratio="40" onclick="setLoanRatio(40)">4成</button>
@@ -1968,30 +1970,93 @@
                         </div>
                     </div>
                     <div class="form-group">
-                        <label>贷款年限</label>
-                        <div class="seg" style="grid-template-columns:repeat(4,1fr);">
-                            <button type="button" data-years="10" onclick="setLoanYears(10)">10年</button>
-                            <button type="button" data-years="20" onclick="setLoanYears(20)">20年</button>
-                            <button type="button" data-years="30" class="active" onclick="setLoanYears(30)">30年</button>
-                            <button type="button" data-years="custom" onclick="setLoanYears('custom')">自定义</button>
+                        <label>购房套数</label>
+                        <div class="seg" style="grid-template-columns:1fr 1fr;">
+                            <button type="button" id="loanHouseFirst" class="active" onclick="setLoanHouseType('first')">首套</button>
+                            <button type="button" id="loanHouseSecond" onclick="setLoanHouseType('second')">二套</button>
                         </div>
-                        <input type="number" id="loanYearsCustom" style="display:none;margin-top:8px;" placeholder="自定义年限（年）" min="1" max="30" oninput="calcLoan(true)">
                     </div>
                     <div class="form-group">
-                        <label>贷款年利率 <span class="muted">（当前商贷约3.1%-3.5%）</span></label>
-                        <div class="input-wrapper">
-                            <input type="number" id="loanRate" value="3.2" min="0" max="20" step="0.01" oninput="calcLoan(true)">
-                            <span class="prefix prefix-right">%</span>
+                        <label>贷款类型</label>
+                        <div class="seg" style="grid-template-columns:1fr 1fr 1fr;">
+                            <button type="button" id="loanTypeCommercial" class="active" onclick="setLoanType('commercial')">商业贷款</button>
+                            <button type="button" id="loanTypeFund" onclick="setLoanType('fund')">公积金贷款</button>
+                            <button type="button" id="loanTypeCombo" onclick="setLoanType('combo')">组合贷款</button>
+                        </div>
+                    </div>
+                    <!-- 组合贷款：商贷和公积金金额 -->
+                    <div id="loanComboFields" style="display:none;">
+                        <div class="form-group">
+                            <label>商业贷款金额 <span class="muted">（万元）</span></label>
+                            <div class="input-wrapper">
+                                <input type="number" id="loanCommercialAmount" placeholder="商业贷款金额" min="0" step="any" oninput="calcLoan(true)">
+                                <span class="prefix prefix-right">万元</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>公积金贷款金额 <span class="muted">（万元，个人最高60万/家庭最高100万，可调整）</span></label>
+                            <div class="input-wrapper">
+                                <input type="number" id="loanFundAmount" placeholder="公积金贷款金额" min="0" step="any" oninput="calcLoan(true)">
+                                <span class="prefix prefix-right">万元</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>还款方式</label>
+                        <div class="seg" style="grid-template-columns:1fr 1fr;">
+                            <button type="button" id="loanRepayEqual" class="active" onclick="setLoanRepay('equal')">等额本息</button>
+                            <button type="button" id="loanRepayPrincipal" onclick="setLoanRepay('principal')">等额本金</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>贷款年限 <span class="muted">（广州最长40年）</span></label>
+                        <div class="seg" style="grid-template-columns:repeat(4,1fr);">
+                            <button type="button" data-years="5" onclick="setLoanYears(5)">5年</button>
+                            <button type="button" data-years="10" onclick="setLoanYears(10)">10年</button>
+                            <button type="button" data-years="15" onclick="setLoanYears(15)">15年</button>
+                            <button type="button" data-years="20" onclick="setLoanYears(20)">20年</button>
+                        </div>
+                        <div class="seg" style="grid-template-columns:repeat(4,1fr);margin-top:6px;">
+                            <button type="button" data-years="25" onclick="setLoanYears(25)">25年</button>
+                            <button type="button" data-years="30" class="active" onclick="setLoanYears(30)">30年</button>
+                            <button type="button" data-years="35" onclick="setLoanYears(35)">35年</button>
+                            <button type="button" data-years="40" onclick="setLoanYears(40)">40年</button>
+                        </div>
+                        <input type="number" id="loanYearsCustom" style="display:none;margin-top:8px;" placeholder="自定义年限（1-40年）" min="1" max="40" oninput="calcLoan(true)">
+                    </div>
+                    <!-- 利率设置 -->
+                    <div id="loanRateCommercialGroup">
+                        <div class="form-group">
+                            <label>商业贷款利率 <span class="muted">（首套默认3.0%，可调整）</span></label>
+                            <div class="input-wrapper">
+                                <input type="number" id="loanCommercialRate" value="3.0" min="0" max="20" step="0.01" oninput="calcLoan(true)">
+                                <span class="prefix prefix-right">%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="loanRateFundGroup" style="display:none;">
+                        <div class="form-group">
+                            <label>公积金贷款利率 <span class="muted">（首套5年以上默认2.6%，可调整）</span></label>
+                            <div class="input-wrapper">
+                                <input type="number" id="loanFundRate" value="2.6" min="0" max="20" step="0.01" oninput="calcLoan(true)">
+                                <span class="prefix prefix-right">%</span>
+                            </div>
                         </div>
                     </div>
                     <button type="button" class="btn btn-primary" onclick="calcLoan()">计算房贷</button>
                     <div class="err" id="loanError"></div>
+                    <div style="margin-top:10px;font-size:11.5px;color:var(--text-hint);line-height:1.6;">
+                        📌 依据广州2026最新政策：5年期LPR 3.5%，首套商贷主流3.0%（LPR-50bp），公积金首套2.6%/二套3.075%，最长可贷40年。仅供参考，以银行审批为准。
+                    </div>
                 </div>
                 <div class="result-card" id="loanResultCard">
-                    <div class="result-label">月供（等额本息）</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div class="result-label" id="loanResultTitle">月供</div>
+                        <button type="button" class="btn btn-ghost" style="padding:6px 12px;font-size:12px;color:var(--accent);border-color:var(--accent);" onclick="copyLoanResult()">📋 一键复制</button>
+                    </div>
                     <div class="result-value" id="loanMonthly">0<span class="pct">元/月</span></div>
                     <div style="margin-top:12px;">
-                        <div id="loanBreakdown" style="font-size:13.5px;color:var(--text-sub);line-height:2;"></div>
+                        <div id="loanBreakdown" style="font-size:13.5px;color:var(--text-sub);line-height:1.9;"></div>
                     </div>
                 </div>
             </div><!-- /tool-loan -->
@@ -4767,6 +4832,19 @@ function setTaxType(type) {
     document.getElementById('taxTypeNonRes').classList.toggle('active', type === 'nonres');
     document.getElementById('taxResFields').style.display = (type === 'residential') ? '' : 'none';
     document.getElementById('taxNonResFields').style.display = (type === 'nonres') ? '' : 'none';
+    // 购房套数：非住宅置灰
+    const group = document.getElementById('taxHouseCountGroup');
+    const hint = document.getElementById('taxHouseCountHint');
+    const buttons = group.querySelectorAll('button');
+    if (type === 'nonres') {
+        group.style.opacity = '0.5';
+        group.style.pointerEvents = 'none';
+        hint.style.display = '';
+    } else {
+        group.style.opacity = '1';
+        group.style.pointerEvents = '';
+        hint.style.display = 'none';
+    }
     calcTax(true);
 }
 function setTaxHouseCount(n) {
@@ -5083,13 +5161,37 @@ function copyTaxResult() {
 }
 
 /* =========================================================
- * 房贷计算（等额本息 + 等额本金）
+ * 房贷计算（商业/公积金/组合贷款，等额本息/等额本金，最长40年）
  * ======================================================= */
 let loanRatio = 30;
 let loanYears = 30;
+let loanHouseType = 'first'; // first / second
+let loanType = 'commercial'; // commercial / fund / combo
+let loanRepay = 'equal'; // equal / principal
+
+/* 等额本息计算 */
+function calcEqualPayment(principal, monthRate, months) {
+    if (monthRate > 0) {
+        const pow = Math.pow(1 + monthRate, months);
+        const monthly = principal * monthRate * pow / (pow - 1);
+        return { monthly, totalPay: monthly * months, totalInterest: monthly * months - principal };
+    }
+    return { monthly: principal / months, totalPay: principal, totalInterest: 0 };
+}
+/* 等额本金计算 */
+function calcPrincipalPayment(principal, monthRate, months) {
+    const firstMonth = principal / months + principal * monthRate;
+    const totalInterest = (months + 1) * principal * monthRate / 2;
+    const decrease = (principal / months) * monthRate;
+    const lastMonth = principal / months + (principal / months) * monthRate;
+    return { firstMonth, lastMonth, decrease, totalInterest, totalPay: principal + totalInterest };
+}
+
 function setLoanRatio(r) {
     loanRatio = r;
     document.querySelectorAll('#tool-loan [data-ratio]').forEach(b => b.classList.toggle('active', Number(b.dataset.ratio) === r));
+    // 切换首付后，组合贷款自动重新分配
+    autoFillComboAmount();
     calcLoan(true);
 }
 function setLoanYears(y) {
@@ -5103,76 +5205,257 @@ function setLoanYears(y) {
     }
     calcLoan(true);
 }
+function setLoanHouseType(t) {
+    loanHouseType = t;
+    document.getElementById('loanHouseFirst').classList.toggle('active', t === 'first');
+    document.getElementById('loanHouseSecond').classList.toggle('active', t === 'second');
+    // 切换首套二套时自动更新利率默认值
+    if (t === 'first') {
+        document.getElementById('loanCommercialRate').value = '3.0';
+        document.getElementById('loanFundRate').value = '2.6';
+    } else {
+        document.getElementById('loanCommercialRate').value = '3.075';
+        document.getElementById('loanFundRate').value = '3.075';
+    }
+    calcLoan(true);
+}
+function setLoanType(t) {
+    loanType = t;
+    document.getElementById('loanTypeCommercial').classList.toggle('active', t === 'commercial');
+    document.getElementById('loanTypeFund').classList.toggle('active', t === 'fund');
+    document.getElementById('loanTypeCombo').classList.toggle('active', t === 'combo');
+    // 显示/隐藏对应字段
+    document.getElementById('loanComboFields').style.display = (t === 'combo') ? '' : 'none';
+    document.getElementById('loanRateCommercialGroup').style.display = (t === 'commercial' || t === 'combo') ? '' : 'none';
+    document.getElementById('loanRateFundGroup').style.display = (t === 'fund' || t === 'combo') ? '' : 'none';
+    // 组合贷款自动分配金额
+    if (t === 'combo') autoFillComboAmount();
+    calcLoan(true);
+}
+function setLoanRepay(r) {
+    loanRepay = r;
+    document.getElementById('loanRepayEqual').classList.toggle('active', r === 'equal');
+    document.getElementById('loanRepayPrincipal').classList.toggle('active', r === 'principal');
+    calcLoan(true);
+}
+/* 组合贷款自动分配：公积金优先用满60万，剩余商贷 */
+function autoFillComboAmount() {
+    const totalWan = parseFloat(document.getElementById('loanTotalPrice').value);
+    if (isNaN(totalWan) || totalWan <= 0) return;
+    const totalLoan = totalWan * (1 - loanRatio / 100);
+    const fundDefault = Math.min(60, totalLoan); // 公积金默认60万
+    const commercial = Math.max(0, totalLoan - fundDefault);
+    document.getElementById('loanCommercialAmount').value = commercial.toFixed(2);
+    document.getElementById('loanFundAmount').value = fundDefault.toFixed(2);
+}
+
 function calcLoan(silent) {
     hideError('loanError');
     const totalWan = parseFloat(document.getElementById('loanTotalPrice').value);
-    const rateYear = parseFloat(document.getElementById('loanRate').value);
     const customY = parseFloat(document.getElementById('loanYearsCustom').value);
     const years = (!isNaN(customY) && customY > 0) ? customY : loanYears;
+    const commRate = parseFloat(document.getElementById('loanCommercialRate').value);
+    const fundRate = parseFloat(document.getElementById('loanFundRate').value);
     const fail = (msg) => {
         document.getElementById('loanResultCard').classList.remove('show');
         if (silent) return;
         return showError('loanError', msg);
     };
     if (isNaN(totalWan) || totalWan <= 0) return fail('请输入房产总价');
-    if (isNaN(rateYear) || rateYear <= 0) return fail('请输入贷款年利率');
-    if (isNaN(years) || years <= 0) return fail('请输入贷款年限');
+    if (isNaN(years) || years <= 0 || years > 40) return fail('贷款年限需在1-40年之间');
 
     const total = totalWan * 10000;
     const downPayment = total * (loanRatio / 100);
-    const loanAmount = total - downPayment;
+    const totalLoan = total - downPayment;
     const months = years * 12;
-    const monthRate = rateYear / 100 / 12;
 
-    // 等额本息：月供 = 贷款额 × 月利率 × (1+月利率)^n / [(1+月利率)^n - 1]
-    let monthlyEqual, totalInterestEqual, totalPayEqual;
-    if (monthRate > 0) {
-        const pow = Math.pow(1 + monthRate, months);
-        monthlyEqual = loanAmount * monthRate * pow / (pow - 1);
-        totalPayEqual = monthlyEqual * months;
-        totalInterestEqual = totalPayEqual - loanAmount;
+    // 确定各部分贷款金额
+    let commLoan = 0, fundLoan = 0;
+    if (loanType === 'commercial') {
+        commLoan = totalLoan;
+    } else if (loanType === 'fund') {
+        fundLoan = totalLoan;
     } else {
-        monthlyEqual = loanAmount / months;
-        totalPayEqual = loanAmount;
-        totalInterestEqual = 0;
+        commLoan = (parseFloat(document.getElementById('loanCommercialAmount').value) || 0) * 10000;
+        fundLoan = (parseFloat(document.getElementById('loanFundAmount').value) || 0) * 10000;
+        if (commLoan + fundLoan <= 0) return fail('请输入商业贷款和公积金贷款金额');
     }
 
-    // 等额本金：首月月供 = 贷款额/n + 贷款额×月利率；总利息 = (n+1)×贷款额×月利率/2
-    const firstMonthPrincipal = loanAmount / months;
-    const monthlyFirst = firstMonthPrincipal + loanAmount * monthRate;
-    const totalInterestPrincipal = (months + 1) * loanAmount * monthRate / 2;
-    const totalPayPrincipal = loanAmount + totalInterestPrincipal;
-    const monthlyDecrease = firstMonthPrincipal * monthRate; // 每月递减
+    const commMonthRate = (commRate || 0) / 100 / 12;
+    const fundMonthRate = (fundRate || 0) / 100 / 12;
 
-    document.getElementById('loanMonthly').innerHTML = monthlyEqual.toFixed(0) + '<span class="pct">元/月</span>';
-    document.getElementById('loanBreakdown').innerHTML = `
+    let rows = [];
+    let totalMonthly = 0, totalInterest = 0, totalPay = 0;
+    let firstMonth = 0, lastMonth = 0, decrease = 0;
+
+    // 计算商贷部分
+    if (commLoan > 0) {
+        if (loanRepay === 'equal') {
+            const r = calcEqualPayment(commLoan, commMonthRate, months);
+            totalMonthly += r.monthly;
+            totalInterest += r.totalInterest;
+            totalPay += r.totalPay;
+            rows.push({ label: '🏦 商业贷款', amount: commLoan, rate: commRate, monthly: r.monthly, interest: r.totalInterest, pay: r.totalPay });
+        } else {
+            const r = calcPrincipalPayment(commLoan, commMonthRate, months);
+            firstMonth += r.firstMonth;
+            lastMonth += r.lastMonth;
+            decrease += r.decrease;
+            totalInterest += r.totalInterest;
+            totalPay += r.totalPay;
+            rows.push({ label: '🏦 商业贷款', amount: commLoan, rate: commRate, firstMonth: r.firstMonth, lastMonth: r.lastMonth, decrease: r.decrease, interest: r.totalInterest, pay: r.totalPay });
+        }
+    }
+    // 计算公积金部分
+    if (fundLoan > 0) {
+        if (loanRepay === 'equal') {
+            const r = calcEqualPayment(fundLoan, fundMonthRate, months);
+            totalMonthly += r.monthly;
+            totalInterest += r.totalInterest;
+            totalPay += r.totalPay;
+            rows.push({ label: '🏛️ 公积金贷款', amount: fundLoan, rate: fundRate, monthly: r.monthly, interest: r.totalInterest, pay: r.totalPay });
+        } else {
+            const r = calcPrincipalPayment(fundLoan, fundMonthRate, months);
+            firstMonth += r.firstMonth;
+            lastMonth += r.lastMonth;
+            decrease += r.decrease;
+            totalInterest += r.totalInterest;
+            totalPay += r.totalPay;
+            rows.push({ label: '🏛️ 公积金贷款', amount: fundLoan, rate: fundRate, firstMonth: r.firstMonth, lastMonth: r.lastMonth, decrease: r.decrease, interest: r.totalInterest, pay: r.totalPay });
+        }
+    }
+
+    // 标题
+    const repayName = loanRepay === 'equal' ? '等额本息' : '等额本金';
+    const typeName = { commercial: '商业贷款', fund: '公积金贷款', combo: '组合贷款' }[loanType];
+    document.getElementById('loanResultTitle').textContent = `月供（${repayName}）`;
+
+    // 主月供显示
+    if (loanRepay === 'equal') {
+        document.getElementById('loanMonthly').innerHTML = totalMonthly.toFixed(0) + '<span class="pct">元/月</span>';
+    } else {
+        document.getElementById('loanMonthly').innerHTML = firstMonth.toFixed(0) + '<span class="pct">元/月（首月）</span>';
+    }
+
+    // 明细
+    let html = `
+        <div style="display:flex;justify-content:space-between;border-bottom:1px dashed var(--chip-border);padding:4px 0;">
+            <span>房产总价</span><span style="font-weight:600;">${totalWan.toFixed(2)} 万元</span>
+        </div>
         <div style="display:flex;justify-content:space-between;border-bottom:1px dashed var(--chip-border);padding:4px 0;">
             <span>首付（${loanRatio}成）</span><span style="font-weight:600;">${(downPayment / 10000).toFixed(2)} 万元</span>
         </div>
         <div style="display:flex;justify-content:space-between;border-bottom:1px dashed var(--chip-border);padding:4px 0;">
-            <span>贷款总额</span><span style="font-weight:600;">${(loanAmount / 10000).toFixed(2)} 万元</span>
+            <span>贷款总额</span><span style="font-weight:600;">${(totalLoan / 10000).toFixed(2)} 万元</span>
         </div>
         <div style="display:flex;justify-content:space-between;border-bottom:1px dashed var(--chip-border);padding:4px 0;">
-            <span>贷款年限 / 年利率</span><span style="font-weight:600;">${years}年 / ${rateYear}%</span>
-        </div>
-        <div style="margin-top:8px;padding:8px 10px;background:var(--bg-soft);border-radius:8px;">
-            <div style="font-weight:700;color:var(--accent);margin-bottom:4px;">📊 等额本息</div>
-            <div style="display:flex;justify-content:space-between;padding:2px 0;"><span>月供</span><span style="font-weight:600;">${monthlyEqual.toFixed(0)} 元</span></div>
-            <div style="display:flex;justify-content:space-between;padding:2px 0;"><span>总利息</span><span>${(totalInterestEqual / 10000).toFixed(2)} 万元</span></div>
-            <div style="display:flex;justify-content:space-between;padding:2px 0;"><span>还款总额</span><span>${(totalPayEqual / 10000).toFixed(2)} 万元</span></div>
-        </div>
-        <div style="margin-top:8px;padding:8px 10px;background:var(--bg-soft);border-radius:8px;">
-            <div style="font-weight:700;color:var(--accent);margin-bottom:4px;">📊 等额本金</div>
-            <div style="display:flex;justify-content:space-between;padding:2px 0;"><span>首月月供</span><span style="font-weight:600;">${monthlyFirst.toFixed(0)} 元</span></div>
-            <div style="display:flex;justify-content:space-between;padding:2px 0;"><span>每月递减</span><span>${monthlyDecrease.toFixed(2)} 元</span></div>
-            <div style="display:flex;justify-content:space-between;padding:2px 0;"><span>总利息</span><span>${(totalInterestPrincipal / 10000).toFixed(2)} 万元</span></div>
-            <div style="display:flex;justify-content:space-between;padding:2px 0;"><span>还款总额</span><span>${(totalPayPrincipal / 10000).toFixed(2)} 万元</span></div>
-        </div>
-        <div style="margin-top:8px;padding:6px 10px;background:rgba(212,175,55,0.1);border-radius:8px;font-size:12.5px;color:var(--text-hint);">
-            💡 等额本金总利息比等额本息少 <b>${((totalInterestEqual - totalInterestPrincipal) / 10000).toFixed(2)} 万元</b>，但前期月供压力更大。
+            <span>贷款类型 / 年限</span><span style="font-weight:600;">${typeName} / ${years}年</span>
         </div>
     `;
+    // 各部分明细
+    rows.forEach(r => {
+        html += `<div style="margin-top:8px;padding:8px 10px;background:var(--bg-soft);border-radius:8px;">
+            <div style="font-weight:700;color:var(--accent);margin-bottom:4px;">${r.label}（${(r.amount / 10000).toFixed(2)}万，利率${r.rate}%）</div>`;
+        if (loanRepay === 'equal') {
+            html += `<div style="display:flex;justify-content:space-between;padding:2px 0;"><span>月供</span><span style="font-weight:600;">${r.monthly.toFixed(0)} 元</span></div>`;
+        } else {
+            html += `<div style="display:flex;justify-content:space-between;padding:2px 0;"><span>首月月供</span><span style="font-weight:600;">${r.firstMonth.toFixed(0)} 元</span></div>
+                <div style="display:flex;justify-content:space-between;padding:2px 0;"><span>末月月供</span><span>${r.lastMonth.toFixed(0)} 元</span></div>
+                <div style="display:flex;justify-content:space-between;padding:2px 0;"><span>每月递减</span><span>${r.decrease.toFixed(2)} 元</span></div>`;
+        }
+        html += `<div style="display:flex;justify-content:space-between;padding:2px 0;"><span>总利息</span><span>${(r.interest / 10000).toFixed(2)} 万元</span></div>
+            <div style="display:flex;justify-content:space-between;padding:2px 0;"><span>还款总额</span><span>${(r.pay / 10000).toFixed(2)} 万元</span></div>
+        </div>`;
+    });
+    // 合计
+    html += `<div style="margin-top:8px;padding:8px 10px;background:rgba(212,175,55,0.12);border-radius:8px;">
+        <div style="font-weight:700;color:#d4af37;margin-bottom:4px;">📊 合计</div>`;
+    if (loanRepay === 'equal') {
+        html += `<div style="display:flex;justify-content:space-between;padding:2px 0;"><span>每月月供</span><span style="font-weight:700;font-size:15px;">${totalMonthly.toFixed(0)} 元</span></div>`;
+    } else {
+        html += `<div style="display:flex;justify-content:space-between;padding:2px 0;"><span>首月月供</span><span style="font-weight:700;font-size:15px;">${firstMonth.toFixed(0)} 元</span></div>
+            <div style="display:flex;justify-content:space-between;padding:2px 0;"><span>末月月供</span><span>${lastMonth.toFixed(0)} 元</span></div>
+            <div style="display:flex;justify-content:space-between;padding:2px 0;"><span>每月递减</span><span>${decrease.toFixed(2)} 元</span></div>`;
+    }
+    html += `<div style="display:flex;justify-content:space-between;padding:2px 0;"><span>总利息</span><span style="font-weight:600;">${(totalInterest / 10000).toFixed(2)} 万元</span></div>
+        <div style="display:flex;justify-content:space-between;padding:2px 0;"><span>还款总额</span><span style="font-weight:600;">${(totalPay / 10000).toFixed(2)} 万元</span></div>
+    </div>`;
+
+    document.getElementById('loanBreakdown').innerHTML = html;
     document.getElementById('loanResultCard').classList.add('show');
+
+    // 存储供复制
+    window.__loanResultText = buildLoanCopyText(totalWan, downPayment, totalLoan, typeName, years, loanRepay, rows, totalMonthly, firstMonth, lastMonth, decrease, totalInterest, totalPay);
+
+    // 自动滚动
+    setTimeout(() => {
+        const card = document.getElementById('loanResultCard');
+        if (card) {
+            const y = card.getBoundingClientRect().top + window.pageYOffset - 70;
+            window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+        }
+    }, 150);
+}
+
+/* 生成房贷复制文本 */
+function buildLoanCopyText(totalWan, downPayment, totalLoan, typeName, years, repay, rows, totalMonthly, firstMonth, lastMonth, decrease, totalInterest, totalPay) {
+    const repayName = repay === 'equal' ? '等额本息' : '等额本金';
+    let lines = [];
+    lines.push('🏠 房贷计算明细');
+    lines.push('━━━━━━━━━━━━━━━━');
+    lines.push('房产总价：' + totalWan.toFixed(2) + ' 万元');
+    lines.push('首付：' + (downPayment / 10000).toFixed(2) + ' 万元');
+    lines.push('贷款总额：' + (totalLoan / 10000).toFixed(2) + ' 万元');
+    lines.push('贷款类型：' + typeName);
+    lines.push('贷款年限：' + years + ' 年');
+    lines.push('还款方式：' + repayName);
+    lines.push('');
+    rows.forEach(r => {
+        lines.push('【' + r.label + '】' + (r.amount / 10000).toFixed(2) + '万，利率' + r.rate + '%');
+        if (repay === 'equal') {
+            lines.push('  月供：' + r.monthly.toFixed(0) + ' 元');
+        } else {
+            lines.push('  首月：' + r.firstMonth.toFixed(0) + ' 元，末月：' + r.lastMonth.toFixed(0) + ' 元，每月递减' + r.decrease.toFixed(2) + ' 元');
+        }
+        lines.push('  总利息：' + (r.interest / 10000).toFixed(2) + ' 万元');
+        lines.push('  还款总额：' + (r.pay / 10000).toFixed(2) + ' 万元');
+        lines.push('');
+    });
+    lines.push('━━━━━━━━━━━━━━━━');
+    if (repay === 'equal') {
+        lines.push('💰 每月月供：' + totalMonthly.toFixed(0) + ' 元');
+    } else {
+        lines.push('💰 首月月供：' + firstMonth.toFixed(0) + ' 元');
+        lines.push('   末月月供：' + lastMonth.toFixed(0) + ' 元');
+        lines.push('   每月递减：' + decrease.toFixed(2) + ' 元');
+    }
+    lines.push('💵 总利息：' + (totalInterest / 10000).toFixed(2) + ' 万元');
+    lines.push('💵 还款总额：' + (totalPay / 10000).toFixed(2) + ' 万元');
+    lines.push('');
+    lines.push('（依据广州2026最新政策估算，实际以银行审批为准）');
+    return lines.join('\n');
+}
+
+/* 一键复制房贷结果 */
+function copyLoanResult() {
+    const text = window.__loanResultText;
+    if (!text) { toast('⚠️ 请先计算房贷'); return; }
+    const doCopy = (txt) => {
+        const ta = document.createElement('textarea');
+        ta.value = txt;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); toast('✅ 已复制到剪贴板'); }
+        catch (e) { toast('⚠️ 复制失败'); }
+        document.body.removeChild(ta);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => toast('✅ 已复制到剪贴板')).catch(() => doCopy(text));
+    } else {
+        doCopy(text);
+    }
 }
 
 /* =========================================================
