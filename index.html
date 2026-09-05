@@ -1936,7 +1936,10 @@
                     </div>
                 </div>
                 <div class="result-card" id="taxResultCard" style="display:none;">
-                    <div class="result-label">税费合计</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div class="result-label">税费合计</div>
+                        <button type="button" class="btn btn-ghost" style="padding:6px 12px;font-size:12px;color:var(--accent);border-color:var(--accent);" onclick="copyTaxResult()">📋 一键复制</button>
+                    </div>
                     <div class="result-value" id="taxTotal">0<span class="pct">万元</span></div>
                     <div style="margin-top:12px;">
                         <div id="taxBreakdown" style="font-size:13.5px;color:var(--text-sub);line-height:1.9;"></div>
@@ -4947,6 +4950,64 @@ function calcTax(silent) {
             <span>${(totalWan + totalTaxWan).toFixed(2)} 万元</span>
         </div>`;
     document.getElementById('taxResultCard').style.display = '';
+    // 存储结果供一键复制
+    window.__taxResultText = buildTaxCopyText(totalWan, buyerItems, sellerItems, agentFee, agentRate, buyerTotal, sellerTotal, totalTaxWan);
+    // 自动滚动到结果
+    setTimeout(() => {
+        const card = document.getElementById('taxResultCard');
+        if (card && card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 100);
+}
+
+/* 生成可复制的税费明细文本 */
+function buildTaxCopyText(totalWan, buyerItems, sellerItems, agentFee, agentRate, buyerTotal, sellerTotal, totalTaxWan) {
+    const typeName = (taxPropertyType === 'residential') ? '住宅/别墅' : '商铺/写字楼/公寓';
+    let lines = [];
+    lines.push('📋 房产交易税费明细');
+    lines.push('━━━━━━━━━━━━━━━━');
+    lines.push('物业类型：' + typeName);
+    lines.push('成交价：' + totalWan.toFixed(2) + ' 万元');
+    lines.push('');
+    lines.push('【👤 买方税费】合计 ' + (buyerTotal / 10000).toFixed(2) + ' 万元');
+    buyerItems.forEach(([label, rate, val]) => {
+        lines.push('  ' + label + '（' + rate + '）：' + (val > 0 ? (val / 10000).toFixed(2) + ' 万元' : '免征'));
+    });
+    lines.push('');
+    lines.push('【🏢 卖方税费】合计 ' + (sellerTotal / 10000).toFixed(2) + ' 万元');
+    sellerItems.forEach(([label, rate, val]) => {
+        lines.push('  ' + label + '（' + rate + '）：' + (val > 0 ? (val / 10000).toFixed(2) + ' 万元' : '免征'));
+    });
+    lines.push('');
+    lines.push('【中介费】' + agentRate + '%：' + (agentFee / 10000).toFixed(2) + ' 万元');
+    lines.push('━━━━━━━━━━━━━━━━');
+    lines.push('💰 税费合计：' + totalTaxWan.toFixed(2) + ' 万元');
+    lines.push('💵 购房总成本（房价+税费+中介）：' + (totalWan + totalTaxWan).toFixed(2) + ' 万元');
+    lines.push('');
+    lines.push('（依据广州2026最新政策估算，实际以税局核定为准）');
+    return lines.join('\n');
+}
+
+/* 一键复制税费结果 */
+function copyTaxResult() {
+    const text = window.__taxResultText;
+    if (!text) { toast('⚠️ 请先计算税费'); return; }
+    const doCopy = (txt) => {
+        const ta = document.createElement('textarea');
+        ta.value = txt;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); toast('✅ 已复制到剪贴板，可粘贴发给客户'); }
+        catch (e) { toast('⚠️ 复制失败，请手动选择复制'); }
+        document.body.removeChild(ta);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => toast('✅ 已复制到剪贴板，可粘贴发给客户'))
+            .catch(() => doCopy(text));
+    } else {
+        doCopy(text);
+    }
 }
 
 /* =========================================================
