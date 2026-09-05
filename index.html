@@ -103,6 +103,114 @@
 
         body.theme-light .card { box-shadow: 0 10px 30px rgba(15,23,42,0.08); }
 
+        /* ===== 多套皮肤主题（data-theme 切换） ===== */
+        /* 1. 暗夜金（默认） */
+        body[data-theme="gold"] {
+            --bg: #0a0a0a; --bg-soft: #1a1609; --card: #15130d; --card-border: #3a2f15;
+            --text: #f5efda; --text-sub: #d9cda3; --text-hint: #9a8c5c; --text-mute: #6b5f3d;
+            --input-bg: #100e08; --input-border: #3a2f15; --input-focus-bg: #1a1609;
+            --chip-bg: #1c1810; --chip-border: #3a2f15; --chip-active: #2a2412;
+            --danger-bg: #3a1a1a; --danger-border: #663333; --danger-text: #ff9999;
+            --line: #3a2f15; --tag-a: #d4af37; --tag-b: #b8860b; --ok: #d4af37; --warn: #f5c542; --danger: #f87171;
+            --accent: #d4af37;
+        }
+        /* 2. 清晨白 */
+        body[data-theme="light"] {
+            --bg: linear-gradient(135deg, #f8f9fb 0%, #eef1f6 100%);
+            --bg-soft: #f3f4f6; --card: #ffffff; --card-border: #e4e7ed;
+            --text: #1a1a1a; --text-sub: #333333; --text-hint: #6b7280; --text-mute: #9ca3af;
+            --input-bg: #ffffff; --input-border: #d1d5db; --input-focus-bg: #ffffff;
+            --chip-bg: #f3f4f6; --chip-border: #e5e7eb; --chip-active: #ffffff;
+            --danger-bg: #fef2f2; --danger-border: #fecaca; --danger-text: #b91c1c;
+            --line: #e5e7eb; --tag-a: #b8860b; --tag-b: #92400e; --ok: #059669; --warn: #d97706; --danger: #dc2626;
+            --accent: #2563eb;
+        }
+        body[data-theme="light"] .card { box-shadow: 0 10px 30px rgba(15,23,42,0.08); }
+        /* 3. 墨绿森林 */
+        body[data-theme="forest"] {
+            --bg: linear-gradient(160deg, #0d1f17 0%, #0a1a12 100%);
+            --bg-soft: #122a1e; --card: #0f2419; --card-border: #1f4a32;
+            --text: #e8f5e9; --text-sub: #c8e6c9; --text-hint: #81c784; --text-mute: #4c7a5a;
+            --input-bg: #0a1f14; --input-border: #1f4a32; --input-focus-bg: #122a1e;
+            --chip-bg: #122a1e; --chip-border: #1f4a32; --chip-active: #1a3d29;
+            --danger-bg: #2d1515; --danger-border: #5a2525; --danger-text: #ef9a9a;
+            --line: #1f4a32; --tag-a: #a5d6a7; --tag-b: #66bb6a; --ok: #66bb6a; --warn: #ffb74d; --danger: #ef5350;
+            --accent: #66bb6a;
+        }
+        /* 4. 海洋蓝 */
+        body[data-theme="ocean"] {
+            --bg: linear-gradient(160deg, #0a1628 0%, #06101f 100%);
+            --bg-soft: #0f1f38; --card: #0d1a30; --card-border: #1e3a5f;
+            --text: #e3f2fd; --text-sub: #bbdefb; --text-hint: #64b5f6; --text-mute: #456a8f;
+            --input-bg: #081428; --input-border: #1e3a5f; --input-focus-bg: #0f1f38;
+            --chip-bg: #0f1f38; --chip-border: #1e3a5f; --chip-active: #163050;
+            --danger-bg: #2d1515; --danger-border: #5a2525; --danger-text: #ef9a9a;
+            --line: #1e3a5f; --tag-a: #4fc3f7; --tag-b: #29b6f6; --ok: #26c6da; --warn: #ffb74d; --danger: #ef5350;
+            --accent: #29b6f6;
+        }
+        /* 5. 暖橙夕阳 */
+        body[data-theme="sunset"] {
+            --bg: linear-gradient(160deg, #1f1208 0%, #160d05 100%);
+            --bg-soft: #2a1a0d; --card: #241509; --card-border: #4a2e15;
+            --text: #fff3e0; --text-sub: #ffe0b2; --text-hint: #ffb74d; --text-mute: #8a6a45;
+            --input-bg: #1a0f06; --input-border: #4a2e15; --input-focus-bg: #2a1a0d;
+            --chip-bg: #2a1a0d; --chip-border: #4a2e15; --chip-active: #3d2610;
+            --danger-bg: #2d1515; --danger-border: #5a2525; --danger-text: #ef9a9a;
+            --line: #4a2e15; --tag-a: #ffb74d; --tag-b: #ff9800; --ok: #ffa726; --warn: #ffca28; --danger: #ef5350;
+            --accent: #ff9800;
+        }
+        /* 6. 紫罗兰 */
+        body[data-theme="violet"] {
+            --bg: linear-gradient(160deg, #150a24 0%, #0e0618 100%);
+            --bg-soft: #1e1033; --card: #180d2a; --card-border: #3a1f5f;
+            --text: #f3e5f5; --text-sub: #e1bee7; --text-hint: #ba68c8; --text-mute: #6a4a8a;
+            --input-bg: #100820; --input-border: #3a1f5f; --input-focus-bg: #1e1033;
+            --chip-bg: #1e1033; --chip-border: #3a1f5f; --chip-active: #2a1845;
+            --danger-bg: #2d1515; --danger-border: #5a2525; --danger-text: #ef9a9a;
+            --line: #3a1f5f; --tag-a: #ce93d8; --tag-b: #ab47bc; --ok: #ba68c8; --warn: #ffb74d; --danger: #ef5350;
+            --accent: #ab47bc;
+        }
+        /* 7. 樱花粉 */
+        body[data-theme="sakura"] {
+            --bg: linear-gradient(135deg, #fff5f7 0%, #ffe8ee 100%);
+            --bg-soft: #fff0f3; --card: #ffffff; --card-border: #f5d0d8;
+            --text: #3d1f2a; --text-sub: #5c3340; --text-hint: #a06a7a; --text-mute: #c49aa8;
+            --input-bg: #ffffff; --input-border: #f0c0cc; --input-focus-bg: #fff5f7;
+            --chip-bg: #fff0f3; --chip-border: #f5d0d8; --chip-active: #ffffff;
+            --danger-bg: #fef2f2; --danger-border: #fecaca; --danger-text: #b91c1c;
+            --line: #f5d0d8; --tag-a: #e91e63; --tag-b: #c2185b; --ok: #ec407a; --warn: #ffa726; --danger: #e53935;
+            --accent: #e91e63;
+        }
+        body[data-theme="sakura"] .card { box-shadow: 0 10px 30px rgba(233,30,99,0.08); }
+        /* 8. 极简墨 */
+        body[data-theme="mono"] {
+            --bg: #111111; --bg-soft: #1a1a1a; --card: #161616; --card-border: #333333;
+            --text: #f0f0f0; --text-sub: #cccccc; --text-hint: #888888; --text-mute: #555555;
+            --input-bg: #0d0d0d; --input-border: #333333; --input-focus-bg: #1a1a1a;
+            --chip-bg: #1a1a1a; --chip-border: #333333; --chip-active: #262626;
+            --danger-bg: #2a1515; --danger-border: #4a2525; --danger-text: #ff8888;
+            --line: #333333; --tag-a: #ffffff; --tag-b: #bbbbbb; --ok: #888888; --warn: #cccccc; --danger: #ff6666;
+            --accent: #ffffff;
+        }
+
+        /* 主题选择器 */
+        .theme-picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 10px 0 6px; }
+        .theme-swatch {
+            border: 2px solid var(--card-border); border-radius: 12px; padding: 10px 8px; cursor: pointer;
+            background: var(--card); text-align: center; transition: all 0.2s; position: relative;
+        }
+        .theme-swatch:hover { transform: translateY(-2px); border-color: var(--accent); }
+        .theme-swatch.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+        .theme-swatch .swatch-preview {
+            width: 100%; height: 36px; border-radius: 8px; margin-bottom: 6px;
+            display: flex; overflow: hidden; border: 1px solid rgba(128,128,128,0.2);
+        }
+        .theme-swatch .swatch-preview span { flex: 1; }
+        .theme-swatch .swatch-name { font-size: 12px; color: var(--text-sub); font-weight: 500; }
+        .theme-swatch.active .swatch-name { color: var(--accent); font-weight: 700; }
+        .theme-swatch .swatch-check { position: absolute; top: 4px; right: 6px; font-size: 12px; display: none; }
+        .theme-swatch.active .swatch-check { display: block; }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
             background: var(--bg);
@@ -1974,6 +2082,12 @@
                 <h2>数据备份与恢复</h2>
             </div>
 
+            <!-- 皮肤主题选择 -->
+            <div class="sub-card">
+                <div class="sub-title"><span>🎨 皮肤主题</span> <span style="font-size:11px;color:var(--text-hint);margin-left:8px;">点击色块一键切换，自动保存</span></div>
+                <div class="theme-picker" id="themePicker"></div>
+            </div>
+
             <div class="sub-card" id="authCard">
                 <div class="sub-title"><span>👤 账号登录</span> <span id="authRoleBadge" style="font-size:11px;color:var(--accent);margin-left:8px;display:none;"></span></div>
                 <div id="authLoggedOut">
@@ -2729,20 +2843,73 @@ function showError(id, msg) {
 function hideError(id) { document.getElementById(id).classList.remove('show'); }
 
 /* =========================================================
- * 主题
+ * 主题（多套皮肤）
  * ======================================================= */
+const THEME_LIST = [
+    { id: 'gold',   name: '暗夜金', emoji: '🌙', colors: ['#0a0a0a', '#15130d', '#d4af37'] },
+    { id: 'light',  name: '清晨白', emoji: '☀️', colors: ['#f8f9fb', '#ffffff', '#2563eb'] },
+    { id: 'forest', name: '墨绿森林', emoji: '🌲', colors: ['#0d1f17', '#0f2419', '#66bb6a'] },
+    { id: 'ocean',  name: '海洋蓝', emoji: '🌊', colors: ['#0a1628', '#0d1a30', '#29b6f6'] },
+    { id: 'sunset', name: '暖橙夕阳', emoji: '🌅', colors: ['#1f1208', '#241509', '#ff9800'] },
+    { id: 'violet', name: '紫罗兰', emoji: '🔮', colors: ['#150a24', '#180d2a', '#ab47bc'] },
+    { id: 'sakura', name: '樱花粉', emoji: '🌸', colors: ['#fff5f7', '#ffffff', '#e91e63'] },
+    { id: 'mono',   name: '极简墨', emoji: '⬛', colors: ['#111111', '#161616', '#ffffff'] }
+];
+function getCurrentTheme() {
+    return document.body.getAttribute('data-theme') || 'gold';
+}
+function setTheme(id) {
+    const t = THEME_LIST.find(x => x.id === id) || THEME_LIST[0];
+    document.body.setAttribute('data-theme', t.id);
+    // 兼容旧的 theme-light 类（light 主题同时加 class，其他移除）
+    document.body.classList.toggle('theme-light', t.id === 'light');
+    localStorage.setItem('theme', t.id);
+    const btn = document.getElementById('themeToggle');
+    if (btn) btn.textContent = t.emoji;
+    // 更新选择器高亮
+    document.querySelectorAll('.theme-swatch').forEach(el => {
+        el.classList.toggle('active', el.dataset.theme === t.id);
+    });
+}
 function initTheme() {
     const saved = localStorage.getItem('theme');
-    const prefersLight = saved ? saved === 'light' : window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
-    if (prefersLight) document.body.classList.add('theme-light');
-    document.getElementById('themeToggle').textContent = prefersLight ? '☀️' : '🌙';
+    // 兼容旧值 'dark'/'light'
+    let id = saved;
+    if (saved === 'dark') id = 'gold';
+    if (!THEME_LIST.find(x => x.id === id)) id = 'gold';
+    setTheme(id);
 }
 function toggleTheme() {
-    const light = document.body.classList.toggle('theme-light');
-    document.getElementById('themeToggle').textContent = light ? '☀️' : '🌙';
-    localStorage.setItem('theme', light ? 'light' : 'dark');
+    // 右上角按钮：循环切换下一个主题
+    const cur = getCurrentTheme();
+    const idx = THEME_LIST.findIndex(x => x.id === cur);
+    const next = THEME_LIST[(idx + 1) % THEME_LIST.length];
+    setTheme(next.id);
 }
 initTheme();
+
+function renderThemePicker() {
+    const box = document.getElementById('themePicker');
+    if (!box) return;
+    const cur = getCurrentTheme();
+    box.innerHTML = THEME_LIST.map(t => `
+        <div class="theme-swatch ${t.id === cur ? 'active' : ''}" data-theme="${t.id}" onclick="setTheme('${t.id}')" title="${t.name}">
+            <span class="swatch-check">✓</span>
+            <div class="swatch-preview">
+                <span style="background:${t.colors[0]}"></span>
+                <span style="background:${t.colors[1]}"></span>
+                <span style="background:${t.colors[2]}"></span>
+            </div>
+            <div class="swatch-name">${t.emoji} ${t.name}</div>
+        </div>
+    `).join('');
+}
+// 页面加载后渲染主题选择器
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', renderThemePicker);
+} else {
+    renderThemePicker();
+}
 
 /* =========================================================
  * Tab 切换
