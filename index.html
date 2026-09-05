@@ -3000,6 +3000,26 @@ function renderFollowupList(type) {
     `).join('');
 }
 
+/* 弹窗里展示的跟进记录块（只读时间线） */
+function followupsBlockHtml(followups) {
+    if (!Array.isArray(followups) || followups.length === 0) return '';
+    const items = followups.slice().sort((a, b) => (b.time || 0) - (a.time || 0));
+    const listHtml = items.map(item => `
+        <div style="padding:8px 10px;margin-bottom:6px;background:var(--bg-soft);border:1px solid var(--card-border);border-radius:8px;border-left:3px solid var(--accent);">
+            <div style="font-size:11px;color:var(--text-hint);margin-bottom:3px;">🕐 ${formatFollowupTime(item.time)}</div>
+            <div style="font-size:13px;color:var(--text-sub);line-height:1.5;white-space:pre-wrap;word-break:break-word;">${escapeHTML(item.text)}</div>
+        </div>
+    `).join('');
+    return `
+        <div style="margin-bottom:16px;">
+            <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                📝 跟进记录 <span style="font-size:11px;color:var(--text-hint);font-weight:400;">共 ${items.length} 条</span>
+            </div>
+            <div style="max-height:260px;overflow-y:auto;">${listHtml}</div>
+        </div>
+    `;
+}
+
 /* =========================================================
  * Tab 切换
  * ======================================================= */
@@ -3730,7 +3750,7 @@ function _gsRenderPreview(type, idx, items) {
             navNext,
             topImage: imgHtml,
             rows,
-            postInfo: matchedProBlockHtml(c, { topN: 20, expanded: true }),
+            postInfo: followupsBlockHtml(c.followups) + matchedProBlockHtml(c, { topN: 20, expanded: true }),
             actions: [
                 { label: '✏️ 编辑', cls: 'btn-ghost', style: 'color:#d4af37;border-color:#d4af37;', onClick: `closeGsPreview(); editCustomer('${c.id}')` },
                 { label: '🗑️ 删除', cls: 'btn-ghost', style: 'color:#dc5050;border-color:#dc5050;', onClick: `closeGsPreview(); delCustomer('${c.id}'); renderGlobalResults();` },
@@ -3788,6 +3808,7 @@ function _gsRenderPreview(type, idx, items) {
             topImage: imgHtml,
             preInfo: priceBig,
             rows,
+            postInfo: followupsBlockHtml(p.followups),
             actions: [
                 { label: '✏️ 编辑', cls: 'btn-ghost', style: 'color:#d4af37;border-color:#d4af37;', onClick: `closeGsPreview(); editProperty('${p.id}')` },
                 { label: '🗑️ 删除', cls: 'btn-ghost', style: 'color:#dc5050;border-color:#dc5050;', onClick: `closeGsPreview(); delProperty('${p.id}'); renderGlobalResults();` },
@@ -3930,7 +3951,7 @@ function cusPreview(id) {
         badge: '客源概览',
         topImage: imgHtml,
         rows,
-        postInfo: matchedProBlockHtml(c, { topN: 20, expanded: true }),
+        postInfo: followupsBlockHtml(c.followups) + matchedProBlockHtml(c, { topN: 20, expanded: true }),
         actions: [
             { label: '✏️ 编辑', cls: 'btn-ghost', style: 'color:#d4af37;border-color:#d4af37;', onClick: `closeGsPreview(); editCustomer('${c.id}')` },
             { label: '🗑️ 删除', cls: 'btn-ghost', style: 'color:#dc5050;border-color:#dc5050;', onClick: `closeGsPreview(); deleteCustomer('${c.id}')` }
@@ -4048,7 +4069,7 @@ function proPreview(id) {
         badge: '盘源概览',
         topImage: imgHtml,
         rows,
-        postInfo: similarPropertiesHtml(p, { topN: 5 }),
+        postInfo: followupsBlockHtml(p.followups) + similarPropertiesHtml(p, { topN: 5 }),
         actions: [
             { label: '✏️ 编辑', cls: 'btn-ghost', style: 'color:#d4af37;border-color:#d4af37;', onClick: `closeGsPreview(); editProperty('${p.id}')` },
             { label: '🗑️ 删除', cls: 'btn-ghost', style: 'color:#dc5050;border-color:#dc5050;', onClick: `closeGsPreview(); deleteProperty('${p.id}')` }
