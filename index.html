@@ -1666,6 +1666,21 @@
         <!-- ========== Tab 1：回报计算 ========== -->
         <div id="tab-calc" class="tab-pane">
             <form id="calcForm" onsubmit="return false;">
+                <!-- 拍照/相册 智能识别 -->
+                <div class="form-group" style="margin-bottom:16px;">
+                    <label>📷 拍照 / 相册 智能识别 <span class="muted">（自动识别总价、租金并填入下方）</span></label>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;">
+                        <button type="button" class="btn btn-ghost" style="flex:1;min-width:120px;" onclick="calcPickImage('camera')">📷 拍照</button>
+                        <button type="button" class="btn btn-ghost" style="flex:1;min-width:120px;" onclick="calcPickImage('album')">🖼️ 从相册选择</button>
+                    </div>
+                    <input type="file" id="calcImageInput" accept="image/*" style="display:none;">
+                    <div id="calcOcrStatus" style="display:none;margin-top:8px;font-size:12px;color:var(--text-hint);">⏳ 识别中…</div>
+                    <div id="calcImagePreviewWrap" style="display:none;margin-top:8px;">
+                        <img id="calcImagePreview" alt="识别图片" style="max-width:100%;max-height:180px;border-radius:8px;border:1px solid var(--border);">
+                    </div>
+                    <div id="calcOcrResult" style="display:none;margin-top:8px;background:rgba(0,0,0,0.04);border:1px dashed var(--border);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--text);white-space:pre-wrap;word-break:break-all;"></div>
+                </div>
+
                 <div class="form-group">
                     <label for="totalPrice">房产总价</label>
                     <div class="input-wrapper">
@@ -4031,6 +4046,197 @@ function switchRentType(type) {
     if (typeof calculate === 'function') calculate(true);
 }
 switchRentType('yearly');
+
+/* =========================================================
+ * 回报计算：拍照/相册 智能识别（OCR 自动填总价与租金）
+ * ======================================================= */
+let __calcOcrWorker = null;   // Tesseract worker（懒加载）
+let __calcTesseractLoaded = false;
+
+/** 选择图片来源：camera=拍照，album=相册 */
+function calcPickImage(source) {
+    const input = document.getElementById('calcImageInput');
+    if (!input) return;
+    // 拍照：优先调起摄像头（移动端 capture=environment 后置摄像头）
+    if (source === 'camera') {
+        input.setAttribute('capture', 'environment');
+    } else {
+        input.removeAttribute('capture');
+    }
+    input.value = '';
+    input.onchange = function () {
+        const file = input.files && input.files[0];
+        if (file) calcOcrFromFile(file);
+    };
+    input.click();
+}
+
+/** 读取图片 → 压缩 → OCR 识别 → 自动填充 */
+function calcOcrFromFile(file) {
+    const status = document.getElementById('calcOcrStatus');
+    const previewWrap = document.getElementById('calcImagePreviewWrap');
+    const preview = document.getElementById('calcImagePreview');
+    const resultBox = document.getElementById('calcOcrResult');
+    if (!status || !previewWrap || !preview || !resultBox) return;
+
+    // 显示预览与识别状态
+    const reader = new FileReader();
+    reader.onerror = function () {
+        status.style.display = 'block';
+        status.textContent = '⚠️ 读取图片失败，请重试';
+    };
+    reader.onload = function () {
+        preview.src = reader.result;
+        previewWrap.style.display = 'block';
+        status.style.display = 'block';
+        status.textContent = '⏳ 正在识别图片内容，请稍候…';
+        resultBox.style.display = 'none';
+
+        // 压缩后再识别，提高速度与成功率
+        compressImage(reader.result, 1400, 0.85, function (compressed) {
+            calcRunOcr(compressed).then(function (text) {
+                status.style.display = 'none';
+                if (!text || !text.trim()) {
+                    resultBox.style.display = 'block';
+                    resultBox.textContent = '⚠️ 未识别到文字。请确认图片清晰、包含总价/租金等数字后重试，或手动输入。';
+                    return;
+                }
+                // 显示识别原文 + 自动填入
+                resultBox.style.display = 'block';
+                resultBox.textContent = '📄 识别结果：\n' + text.trim().slice(0, 400);
+                calcFillFromOcr(text);
+            }).catch(function (err) {
+                status.style.display = 'block';
+                status.textContent = '⚠️ 识别失败：' + ((err && err.message) || '未知错误') + '。可手动输入总价与租金。';
+            });
+        });
+    };
+    reader.readAsDataURL(file);
+}
+
+/** 执行 OCR（Tesseract.js 懒加载） */
+function calcRunOcr(imageDataUrl) {
+    return new Promise(function (resolve, reject) {
+        if (typeof Tesseract === 'undefined') {
+            // 动态加载 Tesseract.js
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+            script.onload = function () {
+                __calcTesseractLoaded = true;
+                calcRunOcrWithWorker(imageDataUrl).then(resolve).catch(reject);
+            };
+            script.onerror = function () {
+                reject(new Error('OCR 引擎加载失败（需联网）'));
+            };
+            document.head.appendChild(script);
+            return;
+        }
+        calcRunOcrWithWorker(imageDataUrl).then(resolve).catch(reject);
+    });
+}
+
+function calcRunOcrWithWorker(imageDataUrl) {
+    const opts = {
+        logger: function () {} // 静默进度
+    };
+    // 中文 + 英文 语言包（数字/总价/租金等中英混合场景）
+    const lang = 'chi_sim+eng';
+    return Tesseract.recognize(imageDataUrl, lang, opts).then(function (result) {
+        return (result && result.data && result.data.text) ? result.data.text : '';
+    });
+}
+
+/** 从 OCR 文本中提取总价与租金并填入表单 */
+function calcFillFromOcr(text) {
+    if (!text) return;
+    const t = text.replace(/[,，\s]/g, '');
+    let priceFound = null;
+    let rentFound = null;
+    let rentIsMonthly = null;   // true=月租金，false=年租金
+
+    // —— 总价提取 ——
+    // 模式：总价 / 总金额 / 总售价 / 售价 / 价格 后跟数字
+    const pricePatterns = [
+        /(?:总价|总金额|总售价|总房价|售价|房价|价格|总价约|约)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:万元|万)/,
+        /(?:总价|总金额|总售价|总房价|售价|房价|价格)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)\s*万/,
+        /([0-9]+(?:\.[0-9]+)?)\s*万元\s*(?:总价|总金额|总售价|售价)/,
+        /(?:总价|总金额|总售价|总房价|售价|房价|价格)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:元|rmb|¥)/,
+        /(?:总价|总金额|总售价|总房价|售价|房价|价格)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)/
+    ];
+    for (const re of pricePatterns) {
+        const m = t.match(re);
+        if (m && m[1]) {
+            const v = parseFloat(m[1]);
+            // 若单位是"元"（模式4），转成万元
+            if (re.toString().includes('元|rmb')) {
+                priceFound = Math.round(v / 10000 * 100) / 100;
+            } else {
+                priceFound = v;
+            }
+            break;
+        }
+    }
+    // 兜底：文本中最大数字且 >100 视为总价（万元），且排除是租金的情况
+    if (priceFound == null) {
+        const nums = t.match(/([0-9]+(?:\.[0-9]+)?)(?:万元|万)/g) || [];
+        const vals = nums.map(n => parseFloat(n.replace(/[万元万]/g, ''))).filter(n => n > 0);
+        if (vals.length) priceFound = Math.max(...vals);
+    }
+
+    // —— 租金提取 ——
+    // 模式：年租金 / 租金(每年) 后跟数字+万
+    const rentPatterns = [
+        /(?:年租金|年租|租金\(?年\)?|每年租金|年租金约)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:万元|万)/,
+        /([0-9]+(?:\.[0-9]+)?)\s*万元\s*(?:\/年|每年|年租金|年租)/,
+        /(?:年租金|年租|每年租金)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:元|rmb|¥)/,
+        /(?:月租金|月租|每月租金|租金\(?月\)?)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:元|rmb|¥|万元|万)/,
+        /(?:月租金|月租|每月租金)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)/,
+        /(?:年租金|年租|每年租金)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)/
+    ];
+    for (const re of rentPatterns) {
+        const m = t.match(re);
+        if (m && m[1]) {
+            const v = parseFloat(m[1]);
+            const pat = re.toString();
+            if (pat.includes('月租金|月租|每月租金')) {
+                rentIsMonthly = true;
+                rentFound = /万元|万/.test(m[0]) ? v * 10000 : v;   // 统一转成"元/月"
+            } else {
+                rentIsMonthly = false;
+                rentFound = /万元|万/.test(m[0]) ? v : Math.round(v / 10000 * 100) / 100;  // 统一"万元/年"
+            }
+            break;
+        }
+    }
+    // 兜底租金：排除总价后的数字
+    if (rentFound == null && priceFound != null) {
+        const nums = t.match(/([0-9]+(?:\.[0-9]+)?)(?:万元|万)/g) || [];
+        const vals = nums.map(n => parseFloat(n.replace(/[万元万]/g, ''))).filter(n => n > 0 && n < priceFound);
+        if (vals.length) {
+            rentIsMonthly = false;
+            rentFound = Math.max(...vals);
+        }
+    }
+
+    // —— 填入表单 ——
+    if (priceFound != null && priceFound > 0) {
+        document.getElementById('totalPrice').value = priceFound;
+    }
+    if (rentFound != null && rentFound >= 0) {
+        if (rentIsMonthly) {
+            // 月租金（元/月）→ 切到月租金模式并填入
+            if (currentRentType !== 'monthly') switchRentType('monthly');
+            document.getElementById('rentInput').value = rentFound;
+        } else {
+            // 年租金（万元/年）→ 切到年租金模式并填入
+            if (currentRentType !== 'yearly') switchRentType('yearly');
+            document.getElementById('rentInput').value = rentFound;
+        }
+    }
+    // 重新计算
+    if (typeof calculate === 'function') calculate();
+}
+
 
 // silent=true：输入过程中实时计算，校验不通过时静默隐藏结果（不弹错误），用于 oninput
 // silent=false：点击"计算回报率"按钮时使用，校验不通过时显式提示错误
