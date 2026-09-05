@@ -1855,36 +1855,71 @@
             </div>
             </div><!-- /tool-roi -->
 
-            <!-- ===== 子面板2：税费计算 ===== -->
+            <!-- ===== 子面板2：税费计算（广州2026最新政策） ===== -->
             <div id="tool-tax" style="display:none;">
                 <div class="sub-card" style="padding:16px 14px;">
                     <div class="form-group">
-                        <label>房产总价</label>
+                        <label>物业类型</label>
+                        <div class="seg" style="grid-template-columns:1fr 1fr;">
+                            <button type="button" id="taxTypeResidential" class="active" onclick="setTaxType('residential')">🏠 住宅/别墅</button>
+                            <button type="button" id="taxTypeNonRes" onclick="setTaxType('nonres')">🏪 商铺/写字楼/公寓</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>成交价</label>
                         <div class="input-wrapper">
-                            <input type="number" id="taxTotalPrice" placeholder="请输入房产总价（万元）" min="0" step="any" oninput="calcTax(true)">
+                            <input type="number" id="taxTotalPrice" placeholder="请输入成交价（万元）" min="0" step="any" oninput="calcTax(true)">
                             <span class="prefix prefix-right">万元</span>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>建筑面积</label>
-                        <div class="input-wrapper">
-                            <input type="number" id="taxArea" placeholder="请输入面积（㎡）" min="0" step="any" oninput="calcTax(true)">
-                            <span class="prefix prefix-right">㎡</span>
+                    <!-- 住宅专属字段 -->
+                    <div id="taxResFields">
+                        <div class="form-group">
+                            <label>建筑面积</label>
+                            <div class="input-wrapper">
+                                <input type="number" id="taxArea" placeholder="请输入面积（㎡）" min="0" step="any" oninput="calcTax(true)">
+                                <span class="prefix prefix-right">㎡</span>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>购房套数（买方）</label>
+                            <div class="seg" style="grid-template-columns:1fr 1fr 1fr;">
+                                <button type="button" id="taxHouse1" class="active" onclick="setTaxHouseCount(1)">首套</button>
+                                <button type="button" id="taxHouse2" onclick="setTaxHouseCount(2)">二套</button>
+                                <button type="button" id="taxHouse3" onclick="setTaxHouseCount(3)">三套及以上</button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>卖方持有情况</label>
+                            <div class="seg" style="grid-template-columns:1fr 1fr 1fr;">
+                                <button type="button" id="taxHoldFull5" class="active" onclick="setTaxHold('full5only')">满五唯一</button>
+                                <button type="button" id="taxHoldFull2" onclick="setTaxHold('full2')">满二不满五</button>
+                                <button type="button" id="taxHoldLess2" onclick="setTaxHold('less2')">不满二</button>
+                            </div>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>购房情况</label>
-                        <div class="seg">
-                            <button type="button" id="taxFirstYes" class="active" onclick="setTaxFirst(true)">首套</button>
-                            <button type="button" id="taxFirstNo" onclick="setTaxFirst(false)">二套及以上</button>
+                    <!-- 非住宅专属字段 -->
+                    <div id="taxNonResFields" style="display:none;">
+                        <div class="form-group">
+                            <label>原购入价 <span class="muted">（差额征收用，不知道可填0按全额）</span></label>
+                            <div class="input-wrapper">
+                                <input type="number" id="taxOriginPrice" placeholder="原购入价（万元）" min="0" step="any" oninput="calcTax(true)">
+                                <span class="prefix prefix-right">万元</span>
+                            </div>
                         </div>
-                    </div>
-                    <div class="form-group">
-                        <label>房屋情况</label>
-                        <div class="seg" style="grid-template-columns:1fr 1fr 1fr;">
-                            <button type="button" id="taxFull5Only" class="active" onclick="setTaxHouse('full5only')">满五唯一</button>
-                            <button type="button" id="taxFull2" onclick="setTaxHouse('full2')">满二</button>
-                            <button type="button" id="taxNormal" onclick="setTaxHouse('normal')">不满二</button>
+                        <div class="form-group">
+                            <label>增值税征收方式</label>
+                            <div class="seg" style="grid-template-columns:1fr 1fr;">
+                                <button type="button" id="taxVatDiff" class="active" onclick="setTaxVatMode('diff')">差额5.6%</button>
+                                <button type="button" id="taxVatFull" onclick="setTaxVatMode('full')">全额5.6%</button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>土地增值税征收方式</label>
+                            <div class="seg" style="grid-template-columns:1fr 1fr;">
+                                <button type="button" id="taxLvtApproved" class="active" onclick="setTaxLvtMode('approved')">核定6%</button>
+                                <button type="button" id="taxLvtProgressive" onclick="setTaxLvtMode('progressive')">四级累进</button>
+                            </div>
                         </div>
                     </div>
                     <div class="form-group">
@@ -1896,12 +1931,15 @@
                     </div>
                     <button type="button" class="btn btn-primary" onclick="calcTax()">计算税费</button>
                     <div class="err" id="taxError"></div>
+                    <div style="margin-top:10px;font-size:11.5px;color:var(--text-hint);line-height:1.6;">
+                        📌 依据广州2026最新政策：住宅增值税不满2年按3%征收（2026.1.1起），满2年免征；非住宅增值税5%+附加0.6%。仅供参考，以税局核定为准。
+                    </div>
                 </div>
                 <div class="result-card" id="taxResultCard" style="display:none;">
                     <div class="result-label">税费合计</div>
                     <div class="result-value" id="taxTotal">0<span class="pct">万元</span></div>
                     <div style="margin-top:12px;">
-                        <div id="taxBreakdown" style="font-size:13.5px;color:var(--text-sub);line-height:2;"></div>
+                        <div id="taxBreakdown" style="font-size:13.5px;color:var(--text-sub);line-height:1.9;"></div>
                     </div>
                 </div>
             </div><!-- /tool-tax -->
@@ -4711,67 +4749,203 @@ function switchToolView(name) {
 /* =========================================================
  * 税费计算（广州二手房参考）
  * ======================================================= */
-let taxIsFirst = true;
-let taxHouseType = 'full5only'; // full5only / full2 / normal
-function setTaxFirst(isFirst) {
-    taxIsFirst = isFirst;
-    document.getElementById('taxFirstYes').classList.toggle('active', isFirst);
-    document.getElementById('taxFirstNo').classList.toggle('active', !isFirst);
+let taxPropertyType = 'residential'; // residential / nonres
+let taxHouseCount = 1; // 1/2/3
+let taxHoldType = 'full5only'; // full5only / full2 / less2
+let taxVatMode = 'diff'; // diff / full
+let taxLvtMode = 'approved'; // approved / progressive
+
+function setTaxType(type) {
+    taxPropertyType = type;
+    document.getElementById('taxTypeResidential').classList.toggle('active', type === 'residential');
+    document.getElementById('taxTypeNonRes').classList.toggle('active', type === 'nonres');
+    document.getElementById('taxResFields').style.display = (type === 'residential') ? '' : 'none';
+    document.getElementById('taxNonResFields').style.display = (type === 'nonres') ? '' : 'none';
     calcTax(true);
 }
-function setTaxHouse(type) {
-    taxHouseType = type;
-    ['full5only', 'full2', 'normal'].forEach(t => {
-        const el = document.getElementById('tax' + t.charAt(0).toUpperCase() + t.slice(1));
-        if (el) el.classList.toggle('active', t === type);
+function setTaxHouseCount(n) {
+    taxHouseCount = n;
+    [1, 2, 3].forEach(x => {
+        const el = document.getElementById('taxHouse' + x);
+        if (el) el.classList.toggle('active', x === n);
     });
     calcTax(true);
 }
+function setTaxHold(type) {
+    taxHoldType = type;
+    const map = { full5only: 'taxHoldFull5', full2: 'taxHoldFull2', less2: 'taxHoldLess2' };
+    Object.keys(map).forEach(k => {
+        const el = document.getElementById(map[k]);
+        if (el) el.classList.toggle('active', k === type);
+    });
+    calcTax(true);
+}
+function setTaxVatMode(mode) {
+    taxVatMode = mode;
+    document.getElementById('taxVatDiff').classList.toggle('active', mode === 'diff');
+    document.getElementById('taxVatFull').classList.toggle('active', mode === 'full');
+    calcTax(true);
+}
+function setTaxLvtMode(mode) {
+    taxLvtMode = mode;
+    document.getElementById('taxLvtApproved').classList.toggle('active', mode === 'approved');
+    document.getElementById('taxLvtProgressive').classList.toggle('active', mode === 'progressive');
+    calcTax(true);
+}
+
+/* 土地增值税四级超率累进（非住宅，有原值时） */
+function calcLvtProgressive(increment, deduction) {
+    if (increment <= 0 || deduction <= 0) return 0;
+    const ratio = increment / deduction;
+    let tax = 0;
+    if (ratio <= 0.5) tax = increment * 0.30;
+    else if (ratio <= 1) tax = increment * 0.40 - deduction * 0.05;
+    else if (ratio <= 2) tax = increment * 0.50 - deduction * 0.15;
+    else tax = increment * 0.60 - deduction * 0.35;
+    return Math.max(0, tax);
+}
+
 function calcTax(silent) {
     hideError('taxError');
     const totalWan = parseFloat(document.getElementById('taxTotalPrice').value);
-    const area = parseFloat(document.getElementById('taxArea').value);
     const agentRate = parseFloat(document.getElementById('taxAgentRate').value) || 0;
     const fail = (msg) => {
         document.getElementById('taxResultCard').style.display = 'none';
         if (silent) return;
         return showError('taxError', msg);
     };
-    if (isNaN(totalWan) || totalWan <= 0) return fail('请输入房产总价');
-    if (isNaN(area) || area <= 0) return fail('请输入建筑面积');
+    if (isNaN(totalWan) || totalWan <= 0) return fail('请输入成交价');
 
     const total = totalWan * 10000; // 元
-    // 契税：首套90㎡以下1%，90㎡以上1.5%；二套90㎡以下1%，90㎡以上2%
-    let deedRate;
-    if (area <= 90) deedRate = 0.01;
-    else deedRate = taxIsFirst ? 0.015 : 0.02;
-    const deedTax = total * deedRate;
-    // 个税：满五唯一免征，否则1%
-    const incomeTax = (taxHouseType === 'full5only') ? 0 : total * 0.01;
-    // 增值税：满二免征，否则5.3%
-    const vatTax = (taxHouseType === 'normal') ? total * 0.053 : 0;
+    let buyerItems = [];  // 买方税费
+    let sellerItems = []; // 卖方税费
+    let buyerTotal = 0, sellerTotal = 0;
+
+    if (taxPropertyType === 'residential') {
+        // ===== 住宅 =====
+        const area = parseFloat(document.getElementById('taxArea').value);
+        if (isNaN(area) || area <= 0) return fail('请输入建筑面积');
+        // 契税（买方）：2024.11广州新政，取消普通/非普通标准
+        let deedRate, deedLabel;
+        if (taxHouseCount === 1) {
+            deedRate = (area <= 140) ? 0.01 : 0.015;
+            deedLabel = '首套' + (area <= 140 ? '≤140㎡' : '>140㎡');
+        } else if (taxHouseCount === 2) {
+            deedRate = (area <= 140) ? 0.01 : 0.02;
+            deedLabel = '二套' + (area <= 140 ? '≤140㎡' : '>140㎡');
+        } else {
+            deedRate = 0.03;
+            deedLabel = '三套及以上';
+        }
+        const deedTax = total * deedRate;
+        buyerItems.push(['契税', deedLabel + ' ' + (deedRate * 100) + '%', deedTax]);
+        buyerTotal += deedTax;
+
+        // 增值税及附加（卖方）：2026.1.1起不满2年按3%征收，满2年免征
+        if (taxHoldType === 'less2') {
+            const vatRate = 0.0336; // 3%增值税 + 0.36%附加
+            const vatTax = total * vatRate;
+            sellerItems.push(['增值税及附加', '不满2年 3.36%（2026新政）', vatTax]);
+            sellerTotal += vatTax;
+        } else {
+            sellerItems.push(['增值税及附加', '满2年免征', 0]);
+        }
+
+        // 个税（卖方）：满五唯一免征，否则核定1%
+        if (taxHoldType === 'full5only') {
+            sellerItems.push(['个人所得税', '满五唯一免征', 0]);
+        } else {
+            const incomeTax = total * 0.01;
+            sellerItems.push(['个人所得税', '核定1%', incomeTax]);
+            sellerTotal += incomeTax;
+        }
+        // 住宅：印花税、土地增值税免征
+        buyerItems.push(['印花税', '个人住房免征', 0]);
+        sellerItems.push(['土地增值税', '个人住房免征', 0]);
+    } else {
+        // ===== 非住宅（商铺/写字楼/公寓/车位） =====
+        const originWan = parseFloat(document.getElementById('taxOriginPrice').value) || 0;
+        const origin = originWan * 10000;
+        const diff = Math.max(0, total - origin); // 增值额
+
+        // 契税（买方）：固定3%
+        const deedTax = total * 0.03;
+        buyerItems.push(['契税', '非住宅 3%', deedTax]);
+        buyerTotal += deedTax;
+
+        // 印花税（买卖双方各0.05%）
+        const stampBuyer = total * 0.0005;
+        const stampSeller = total * 0.0005;
+        buyerItems.push(['印花税', '买方 0.05%', stampBuyer]);
+        buyerTotal += stampBuyer;
+        sellerItems.push(['印花税', '卖方 0.05%', stampSeller]);
+        sellerTotal += stampSeller;
+
+        // 增值税及附加（卖方）：差额5.6% 或 全额5.6%
+        let vatTax, vatLabel;
+        if (taxVatMode === 'diff') {
+            vatTax = diff * 0.056;
+            vatLabel = '差额5.6%（增值' + (diff / 10000).toFixed(1) + '万）';
+        } else {
+            vatTax = total * 0.056;
+            vatLabel = '全额5.6%';
+        }
+        sellerItems.push(['增值税及附加', vatLabel, vatTax]);
+        sellerTotal += vatTax;
+
+        // 个税（卖方）：核定1.5%
+        const incomeTax = total * 0.015;
+        sellerItems.push(['个人所得税', '核定1.5%', incomeTax]);
+        sellerTotal += incomeTax;
+
+        // 土地增值税（卖方）：核定6% 或 四级累进
+        let lvtTax, lvtLabel;
+        if (taxLvtMode === 'approved') {
+            lvtTax = total * 0.06;
+            lvtLabel = '核定6%';
+        } else {
+            // 四级累进：扣除项目 = 原购入价 + 购入时契税 + 增值税附加（简化：原值×1.05作为扣除）
+            const deduction = origin > 0 ? origin * 1.05 : total * 0.5;
+            const increment = total - deduction;
+            lvtTax = calcLvtProgressive(Math.max(0, increment), deduction);
+            const ratio = deduction > 0 ? (increment / deduction * 100).toFixed(0) : '?';
+            lvtLabel = '四级累进（增值率' + ratio + '%）';
+        }
+        sellerItems.push(['土地增值税', lvtLabel, lvtTax]);
+        sellerTotal += lvtTax;
+    }
+
     // 中介费
     const agentFee = total * (agentRate / 100);
-    // 合计
-    const totalTax = deedTax + incomeTax + vatTax + agentFee;
+    const totalTax = buyerTotal + sellerTotal + agentFee;
     const totalTaxWan = totalTax / 10000;
 
     document.getElementById('taxTotal').innerHTML = totalTaxWan.toFixed(2) + '<span class="pct">万元</span>';
-    const rows = [
-        ['契税', deedRate * 100 + '%', deedTax],
-        ['个人所得税', (taxHouseType === 'full5only' ? '免征（满五唯一）' : '1%'), incomeTax],
-        ['增值税及附加', (taxHouseType === 'normal' ? '5.3%（不满二）' : '免征（满二）'), vatTax],
-        ['中介费', agentRate + '%', agentFee],
-    ];
-    document.getElementById('taxBreakdown').innerHTML = rows.map(([label, rate, val]) =>
-        `<div style="display:flex;justify-content:space-between;border-bottom:1px dashed var(--chip-border);padding:4px 0;">
-            <span>${label}（${rate}）</span>
-            <span style="font-weight:600;">${(val / 10000).toFixed(2)} 万元</span>
-        </div>`
-    ).join('') + `<div style="display:flex;justify-content:space-between;padding:6px 0;font-weight:700;color:var(--accent);margin-top:4px;">
-        <span>💰 购房总成本（房价+税费）</span>
-        <span>${(totalWan + totalTaxWan).toFixed(2)} 万元</span>
-    </div>`;
+
+    const renderItems = (items, totalVal, title, color) => {
+        const rows = items.map(([label, rate, val]) =>
+            `<div style="display:flex;justify-content:space-between;border-bottom:1px dashed var(--chip-border);padding:3px 0;">
+                <span>${label} <span style="color:var(--text-hint);font-size:12px;">(${rate})</span></span>
+                <span style="font-weight:600;">${val > 0 ? (val / 10000).toFixed(2) + ' 万' : '免征'}</span>
+            </div>`
+        ).join('');
+        return `<div style="margin-bottom:10px;">
+            <div style="font-weight:700;color:${color};margin-bottom:4px;font-size:13px;">${title}（${(totalVal / 10000).toFixed(2)}万）</div>
+            ${rows}
+        </div>`;
+    };
+
+    document.getElementById('taxBreakdown').innerHTML =
+        renderItems(buyerItems, buyerTotal, '👤 买方税费', '#4fc3f7') +
+        renderItems(sellerItems, sellerTotal, '🏢 卖方税费', '#ffb74d') +
+        `<div style="display:flex;justify-content:space-between;border-bottom:1px dashed var(--chip-border);padding:3px 0;">
+            <span>中介费 <span style="color:var(--text-hint);font-size:12px;">(${agentRate}%)</span></span>
+            <span style="font-weight:600;">${(agentFee / 10000).toFixed(2)} 万</span>
+        </div>` +
+        `<div style="display:flex;justify-content:space-between;padding:6px 0;font-weight:700;color:var(--accent);margin-top:6px;font-size:14px;">
+            <span>💰 购房总成本（房价+全部税费+中介）</span>
+            <span>${(totalWan + totalTaxWan).toFixed(2)} 万元</span>
+        </div>`;
     document.getElementById('taxResultCard').style.display = '';
 }
 
