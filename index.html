@@ -4955,8 +4955,11 @@ function calcTax(silent) {
     // 自动滚动到结果
     setTimeout(() => {
         const card = document.getElementById('taxResultCard');
-        if (card && card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }, 100);
+        if (card) {
+            const y = card.getBoundingClientRect().top + window.pageYOffset - 70;
+            window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+        }
+    }, 150);
 }
 
 /* 生成可复制的税费明细文本 */
