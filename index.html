@@ -1993,8 +1993,31 @@
                                 <span class="prefix prefix-right">万元</span>
                             </div>
                         </div>
+                    </div>
+                    <!-- 公积金相关选项（公积金贷款或组合贷款时显示） -->
+                    <div id="loanFundOptions" style="display:none;">
                         <div class="form-group">
-                            <label>公积金贷款金额 <span class="muted">（万元，个人最高60万/家庭最高100万，可调整）</span></label>
+                            <label>申请人数量</label>
+                            <div class="seg" style="grid-template-columns:1fr 1fr;">
+                                <button type="button" id="loanApplicantSingle" class="active" onclick="setLoanApplicant('single')">个人申请</button>
+                                <button type="button" id="loanApplicantCouple" onclick="setLoanApplicant('couple')">夫妻双方</button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>育儿情况 <span class="muted">（子女未成年可上浮额度）</span></label>
+                            <div class="seg" style="grid-template-columns:repeat(4,1fr);">
+                                <button type="button" id="loanChild0" class="active" onclick="setLoanChild(0)">无孩</button>
+                                <button type="button" id="loanChild1" onclick="setLoanChild(1)">一孩</button>
+                                <button type="button" id="loanChild2" onclick="setLoanChild(2)">二孩</button>
+                                <button type="button" id="loanChild3" onclick="setLoanChild(3)">三孩+</button>
+                            </div>
+                        </div>
+                        <div style="background:var(--bg-soft);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12.5px;color:var(--text-sub);">
+                            💰 公积金最高可贷：<b id="loanFundMaxLabel" style="color:var(--accent);">100 万元</b>
+                            <span style="color:var(--text-hint);">（个人基础100万/夫妻200万，一孩+10%/二孩+40%/三孩+80%）</span>
+                        </div>
+                        <div class="form-group">
+                            <label>公积金贷款金额 <span class="muted">（万元，可调整，不超过最高额度）</span></label>
                             <div class="input-wrapper">
                                 <input type="number" id="loanFundAmount" placeholder="公积金贷款金额" min="0" step="any" oninput="calcLoan(true)">
                                 <span class="prefix prefix-right">万元</span>
@@ -5168,6 +5191,21 @@ let loanYears = 30;
 let loanHouseType = 'first'; // first / second
 let loanType = 'commercial'; // commercial / fund / combo
 let loanRepay = 'equal'; // equal / principal
+let loanApplicant = 'single'; // single / couple
+let loanChild = 0; // 0/1/2/3
+
+/* 计算公积金最高可贷额度（万元） */
+function getFundMaxAmount() {
+    const base = (loanApplicant === 'couple') ? 200 : 100;
+    const uplift = [0, 0.10, 0.40, 0.80][loanChild] || 0;
+    return base * (1 + uplift);
+}
+/* 更新公积金最高额度标签 */
+function updateFundMaxLabel() {
+    const max = getFundMaxAmount();
+    const label = document.getElementById('loanFundMaxLabel');
+    if (label) label.textContent = max.toFixed(0) + ' 万元';
+}
 
 /* 等额本息计算 */
 function calcEqualPayment(principal, monthRate, months) {
@@ -5190,8 +5228,9 @@ function calcPrincipalPayment(principal, monthRate, months) {
 function setLoanRatio(r) {
     loanRatio = r;
     document.querySelectorAll('#tool-loan [data-ratio]').forEach(b => b.classList.toggle('active', Number(b.dataset.ratio) === r));
-    // 切换首付后，组合贷款自动重新分配
-    autoFillComboAmount();
+    // 切换首付后，自动重新分配金额
+    if (loanType === 'combo') autoFillComboAmount();
+    if (loanType === 'fund') autoFillFundOnly();
     calcLoan(true);
 }
 function setLoanYears(y) {
@@ -5226,10 +5265,34 @@ function setLoanType(t) {
     document.getElementById('loanTypeCombo').classList.toggle('active', t === 'combo');
     // 显示/隐藏对应字段
     document.getElementById('loanComboFields').style.display = (t === 'combo') ? '' : 'none';
+    document.getElementById('loanFundOptions').style.display = (t === 'fund' || t === 'combo') ? '' : 'none';
     document.getElementById('loanRateCommercialGroup').style.display = (t === 'commercial' || t === 'combo') ? '' : 'none';
     document.getElementById('loanRateFundGroup').style.display = (t === 'fund' || t === 'combo') ? '' : 'none';
-    // 组合贷款自动分配金额
+    // 公积金贷款或组合贷款时，自动分配金额
     if (t === 'combo') autoFillComboAmount();
+    if (t === 'fund') autoFillFundOnly();
+    updateFundMaxLabel();
+    calcLoan(true);
+}
+function setLoanApplicant(a) {
+    loanApplicant = a;
+    document.getElementById('loanApplicantSingle').classList.toggle('active', a === 'single');
+    document.getElementById('loanApplicantCouple').classList.toggle('active', a === 'couple');
+    updateFundMaxLabel();
+    // 切换申请人数量后重新分配
+    if (loanType === 'combo') autoFillComboAmount();
+    if (loanType === 'fund') autoFillFundOnly();
+    calcLoan(true);
+}
+function setLoanChild(c) {
+    loanChild = c;
+    [0, 1, 2, 3].forEach(x => {
+        const el = document.getElementById('loanChild' + x);
+        if (el) el.classList.toggle('active', x === c);
+    });
+    updateFundMaxLabel();
+    if (loanType === 'combo') autoFillComboAmount();
+    if (loanType === 'fund') autoFillFundOnly();
     calcLoan(true);
 }
 function setLoanRepay(r) {
@@ -5238,15 +5301,25 @@ function setLoanRepay(r) {
     document.getElementById('loanRepayPrincipal').classList.toggle('active', r === 'principal');
     calcLoan(true);
 }
-/* 组合贷款自动分配：公积金优先用满60万，剩余商贷 */
+/* 组合贷款自动分配：公积金优先用满最高额度，剩余商贷 */
 function autoFillComboAmount() {
     const totalWan = parseFloat(document.getElementById('loanTotalPrice').value);
     if (isNaN(totalWan) || totalWan <= 0) return;
     const totalLoan = totalWan * (1 - loanRatio / 100);
-    const fundDefault = Math.min(60, totalLoan); // 公积金默认60万
-    const commercial = Math.max(0, totalLoan - fundDefault);
+    const fundMax = getFundMaxAmount();
+    const fundAmount = Math.min(fundMax, totalLoan);
+    const commercial = Math.max(0, totalLoan - fundAmount);
     document.getElementById('loanCommercialAmount').value = commercial.toFixed(2);
-    document.getElementById('loanFundAmount').value = fundDefault.toFixed(2);
+    document.getElementById('loanFundAmount').value = fundAmount.toFixed(2);
+}
+/* 纯公积金贷款：自动填满最高额度（不超过贷款总额） */
+function autoFillFundOnly() {
+    const totalWan = parseFloat(document.getElementById('loanTotalPrice').value);
+    if (isNaN(totalWan) || totalWan <= 0) return;
+    const totalLoan = totalWan * (1 - loanRatio / 100);
+    const fundMax = getFundMaxAmount();
+    const fundAmount = Math.min(fundMax, totalLoan);
+    document.getElementById('loanFundAmount').value = fundAmount.toFixed(2);
 }
 
 function calcLoan(silent) {
@@ -5274,7 +5347,8 @@ function calcLoan(silent) {
     if (loanType === 'commercial') {
         commLoan = totalLoan;
     } else if (loanType === 'fund') {
-        fundLoan = totalLoan;
+        fundLoan = (parseFloat(document.getElementById('loanFundAmount').value) || 0) * 10000;
+        if (fundLoan <= 0) return fail('请输入公积金贷款金额');
     } else {
         commLoan = (parseFloat(document.getElementById('loanCommercialAmount').value) || 0) * 10000;
         fundLoan = (parseFloat(document.getElementById('loanFundAmount').value) || 0) * 10000;
