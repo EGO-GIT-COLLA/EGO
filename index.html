@@ -2887,27 +2887,45 @@ function extractAddress(text) {
 }
 function extractPropertyPriceAndSize(text) {
     const result = { price: '', size: '' };
+    if (!text) return result;
     const t = text.replace(/\s+/g, '');
-    // 价格：280万、680 万元、总价 888.8万、售价280万、售280万（"售"后即总价）
+    // 价格：总价680万、售价280万、成交价300万、报价、底价、急售价、实收价、挂牌价、680万元
+    const priceKeywords = '总价|总金额|总售价|总房价|售价|房价|价格|成交价|报价|底价|急售价|实收价|挂牌价|总价约|约售价|开价|卖价|房屋总价|房产总价';
     const pricePat = [
-        /总价([\d.]+)(万|w|W|元)/,
-        /([\d.]+)万元/,
-        /售价([\d.]+)(万|w|W)/,
-        /售([\d.]+)(万|w|W|元)/,
-        /([\d.]+)(万|w|W)/
+        new RegExp(`(?:${priceKeywords})\\s*[:：]?\\s*([\\d.]+)\\s*(?:万元|万|w|W|元)`, 'i'),
+        /([\d.]+)\s*万元\s*(?:总价|总金额|总售价|售价|成交价|报价)/,
+        /([\d.]+)\s*(?:万元|万)/,
+        new RegExp(`(?:${priceKeywords})\\s*[:：]?\\s*([\\d.]+)`, 'i'),
     ];
     for (const p of pricePat) {
         const m = t.match(p);
-        if (m) { result.price = m[1]; break; }
+        if (m) {
+            const v = parseFloat(m[1]);
+            // 排除明显不是房价的数字（如面积、楼层、户型）
+            if (v <= 0) continue;
+            if (v < 3 && !/总价|售价|成交价|报价/.test(m[0])) continue; // 太小可能是楼层/房间数
+            result.price = m[1];
+            break;
+        }
     }
-    // "方" = 平方（如 90方 = 90㎡），南方房源描述常用
+    // 面积：90㎡、89平方米、建面100平、套内80方、建筑面积
+    // 排除：3室2厅、2卫、18层、32楼等户型/楼层数字
     const sizePat = [
-        /(?:面积|建面|套内|户型面积)([\d.]+)(?:㎡|平方米|平米|平|方|m2|M2|m²)/,
-        /([\d,.]+)(?:㎡|平方米|平米|平|方|m²)/
+        /(?:面积|建面|套内|户型面积|建筑面积|使用面积|产权面积)\s*[:：]?\s*([\d.]+)\s*(?:㎡|平方米|平米|平|方|m2|M2|m²)/i,
+        /([\d.]+)\s*(?:㎡|平方米|平米|m²)/i,
+        /([\d.]+)\s*(?:平|方)\s*(?:米|)/,
     ];
     for (const p of sizePat) {
         const m = t.match(p);
-        if (m) { result.size = m[1]; break; }
+        if (m) {
+            const v = parseFloat(m[1]);
+            // 排除户型数字（室、厅、卫前面的数字）和楼层
+            const context = m[0];
+            if (/室|厅|卫|房|层|楼|栋|单元/.test(context)) continue;
+            if (v <= 0 || v > 2000) continue; // 面积合理范围
+            result.size = m[1];
+            break;
+        }
     }
     return result;
 }
@@ -4696,80 +4714,144 @@ function calcRunOcrWithWorker(imageDataUrl) {
 function calcFillFromOcr(text) {
     const summary = { price: null, rent: null, rentType: null, rate: null };
     if (!text) return summary;
-    // 归一化：去空格/逗号/全角数字转半角
-    let t = text.replace(/[,，\s]/g, '');
-    t = t.replace(/[０-９]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0); });
+    // 归一化：全角数字转半角，统一单位写法
+    let t = text.replace(/[０-９]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0); });
+    t = t.replace(/[,，]/g, '');
+    t = t.replace(/[Ｗｗ]/g, 'w').replace(/[Ｗ]/g, 'w');
+    // 保留空格用于上下文判断，但去掉多余空格
+    t = t.replace(/\s+/g, ' ').trim();
+    const tNoSpace = t.replace(/\s/g, '');
+
     let priceFound = null;
     let rentFound = null;
     let rentIsMonthly = null;   // true=月租金，false=年租金
 
+    // 先提取面积（用于排除干扰）：面积通常带 ㎡/平方米/平米/平/方/m2
+    const areaMatch = tNoSpace.match(/(?:面积|建面|套内|户型面积|建筑面积)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:㎡|平方米|平米|平|方|m2|M2|m²)/i)
+        || tNoSpace.match(/([0-9]+(?:\.[0-9]+)?)\s*(?:㎡|平方米|平米|m²)/i);
+    const areaVal = areaMatch ? parseFloat(areaMatch[1]) : null;
+
     // —— 总价提取 ——
-    // 模式1：总价/售价/房价/价格 后跟数字+万元/万
+    const priceKeywords = '总价|总金额|总售价|总房价|售价|房价|价格|成交价|报价|底价|急售价|实收价|挂牌价|总价约|约售价|开价|卖价|房屋总价|房产总价';
     const pricePatterns = [
-        /(?:总价|总金额|总售价|总房价|售价|房价|价格|总价约|约)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:万元|万)/,
-        /(?:总价|总金额|总售价|总房价|售价|房价|价格)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)\s*万/,
-        /([0-9]+(?:\.[0-9]+)?)\s*万元\s*(?:总价|总金额|总售价|售价)/,
-        /(?:总价|总金额|总售价|总房价|售价|房价|价格)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:元|rmb|¥)/,
-        /(?:总价|总金额|总售价|总房价|售价|房价|价格)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)/
+        // 关键词 + 数字 + 万元/万
+        new RegExp(`(?:${priceKeywords})\\s*[:：]?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:万元|万)`, 'i'),
+        // 数字 + 万元 + 关键词
+        /([0-9]+(?:\.[0-9]+)?)\s*万元\s*(?:总价|总金额|总售价|售价|成交价|报价)/,
+        // 关键词 + 数字 + 元（大额，>=10万）
+        new RegExp(`(?:${priceKeywords})\\s*[:：]?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:元|rmb|¥|块)`, 'i'),
+        // 关键词 + 数字（无单位，结合上下文判断）
+        new RegExp(`(?:${priceKeywords})\\s*[:：]?\\s*([0-9]+(?:\\.[0-9]+)?)`, 'i'),
     ];
     for (const re of pricePatterns) {
-        const m = t.match(re);
+        const m = tNoSpace.match(re);
         if (m && m[1]) {
             const v = parseFloat(m[1]);
-            // 若单位是"元"（模式4），转成万元
-            if (re.toString().includes('元|rmb')) {
+            if (v <= 0) continue;
+            // 若单位是"元"且数值>=100000，转成万元
+            if (re.toString().includes('元|rmb|¥|块') && v >= 100000) {
                 priceFound = Math.round(v / 10000 * 100) / 100;
+            } else if (re.toString().includes('元|rmb|¥|块') && v < 100000) {
+                // 小额元可能是单价或租金，跳过
+                continue;
             } else {
                 priceFound = v;
             }
             break;
         }
     }
-    // 兜底1：文本中"数字+万元/万"的最大值（且不是租金上下文）
+    // 兜底1：文本中"数字+万元/万"的最大值，排除面积和明显的租金
     if (priceFound == null) {
-        const nums = t.match(/([0-9]+(?:\.[0-9]+)?)(?:万元|万)/g) || [];
-        const vals = nums.map(n => parseFloat(n.replace(/[万元万]/g, ''))).filter(n => n > 0);
+        const nums = tNoSpace.match(/([0-9]+(?:\.[0-9]+)?)\s*(?:万元|万)/g) || [];
+        const vals = nums.map(n => parseFloat(n.replace(/[万元万]/g, ''))).filter(n => {
+            if (n <= 0) return false;
+            if (areaVal && Math.abs(n - areaVal) < 1) return false; // 排除面积
+            if (n < 5) return false; // 小于5万通常不是房价
+            return true;
+        });
         if (vals.length) priceFound = Math.max(...vals);
     }
-    // 兜底2：若只有"3800000元/380万"等整额，取最大金额数字
+    // 兜底2：若只有大额"元"，取最大金额数字转万元
     if (priceFound == null) {
-        const bigNums = t.match(/([0-9]+(?:\.[0-9]+)?)(?:元|rmb|¥)/g) || [];
-        const vals = bigNums.map(n => parseFloat(n.replace(/[元rmb¥]/g, ''))).filter(n => n >= 100000);
+        const bigNums = tNoSpace.match(/([0-9]+(?:\.[0-9]+)?)\s*(?:元|rmb|¥|块)/g) || [];
+        const vals = bigNums.map(n => parseFloat(n.replace(/[元rmb¥块]/g, ''))).filter(n => n >= 100000);
         if (vals.length) priceFound = Math.round(Math.max(...vals) / 10000 * 100) / 100;
     }
 
     // —— 租金提取 ——
-    // 模式：年租金/月租金 后跟数字
+    const rentKeywordsMonthly = '月租金|月租|每月租金|每月租|月收租|月租金收入|月租金额|月租金约|每月租金约|放租|租价|租金每月';
+    const rentKeywordsYearly = '年租金|年租|每年租金|每年租|年收租|年租金收入|年租金约|每年租金约|年租金收入|年回报租金';
     const rentPatterns = [
-        /(?:年租金|年租|租金\(?年\)?|每年租金|年租金约)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:万元|万)/,
+        // 年租金 + 数字 + 万元/万
+        new RegExp(`(?:${rentKeywordsYearly})\\s*[:：]?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:万元|万)`, 'i'),
+        // 数字 + 万元 + /年/每年/年租金
         /([0-9]+(?:\.[0-9]+)?)\s*万元\s*(?:\/年|每年|年租金|年租)/,
-        /(?:年租金|年租|每年租金)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:元|rmb|¥)/,
-        /(?:月租金|月租|每月租金|租金\(?月\)?)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:元|rmb|¥|万元|万)/,
-        /(?:月租金|月租|每月租金)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)/,
-        /(?:年租金|年租|每年租金)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)/
+        // 年租金 + 数字 + 元
+        new RegExp(`(?:${rentKeywordsYearly})\\s*[:：]?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:元|rmb|¥|块)`, 'i'),
+        // 月租金 + 数字 + 元/万元
+        new RegExp(`(?:${rentKeywordsMonthly})\\s*[:：]?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:元|rmb|¥|块|万元|万)`, 'i'),
+        // 数字 + 元 + /月/每月/月租金
+        /([0-9]+(?:\.[0-9]+)?)\s*(?:元|rmb|¥|块)\s*(?:\/月|每月|月租金|月租)/,
+        // 月租金 + 数字（无单位，默认元/月）
+        new RegExp(`(?:${rentKeywordsMonthly})\\s*[:：]?\\s*([0-9]+(?:\\.[0-9]+)?)`, 'i'),
+        // 年租金 + 数字（无单位，默认万元/年，如果数值小）
+        new RegExp(`(?:${rentKeywordsYearly})\\s*[:：]?\\s*([0-9]+(?:\\.[0-9]+)?)`, 'i'),
     ];
     for (const re of rentPatterns) {
-        const m = t.match(re);
+        const m = tNoSpace.match(re);
         if (m && m[1]) {
             const v = parseFloat(m[1]);
+            if (v <= 0) continue;
             const pat = re.toString();
-            if (pat.includes('月租金|月租|每月租金')) {
+            const matchedText = m[0];
+            if (/月租金|月租|每月租金|每月租|月收租|月租金收入|月租金额|放租|租价|租金每月|\/月|每月|月租金|月租/.test(pat) || /\/月|每月|月租金|月租/.test(matchedText)) {
                 rentIsMonthly = true;
-                rentFound = /万元|万/.test(m[0]) ? v * 10000 : v;   // 统一转成"元/月"
+                // 月租金：万元转元，元保持
+                if (/万元|万/.test(matchedText)) {
+                    rentFound = Math.round(v * 10000);
+                } else {
+                    rentFound = v;
+                }
             } else {
                 rentIsMonthly = false;
-                rentFound = /万元|万/.test(m[0]) ? v : Math.round(v / 10000 * 100) / 100;  // 统一"万元/年"
+                // 年租金：万元保持，元转万元
+                if (/万元|万/.test(matchedText)) {
+                    rentFound = v;
+                } else if (v >= 10000) {
+                    rentFound = Math.round(v / 10000 * 100) / 100;
+                } else {
+                    // 小额无单位，默认万元/年
+                    rentFound = v;
+                }
             }
             break;
         }
     }
-    // 兜底租金：排除总价后的数字
+    // 兜底租金：排除总价和面积后的"数字+万元/万"，取次大值
     if (rentFound == null && priceFound != null) {
-        const nums = t.match(/([0-9]+(?:\.[0-9]+)?)(?:万元|万)/g) || [];
-        const vals = nums.map(n => parseFloat(n.replace(/[万元万]/g, ''))).filter(n => n > 0 && n < priceFound);
+        const nums = tNoSpace.match(/([0-9]+(?:\.[0-9]+)?)\s*(?:万元|万)/g) || [];
+        const vals = nums.map(n => parseFloat(n.replace(/[万元万]/g, ''))).filter(n => {
+            if (n <= 0) return false;
+            if (n >= priceFound) return false; // 排除总价
+            if (areaVal && Math.abs(n - areaVal) < 1) return false; // 排除面积
+            if (n < 0.5) return false; // 太小不是租金
+            return true;
+        });
         if (vals.length) {
             rentIsMonthly = false;
             rentFound = Math.max(...vals);
+        }
+    }
+    // 兜底2：如果有回报率和总价，反推年租金
+    if (rentFound == null && priceFound != null) {
+        const rateMatch = tNoSpace.match(/(?:回报率|年回报率|收益率|年收益率|租金回报率)\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)\s*%/);
+        if (rateMatch) {
+            const rate = parseFloat(rateMatch[1]);
+            if (rate > 0 && rate < 50) {
+                rentIsMonthly = false;
+                rentFound = Math.round(priceFound * rate / 100 * 100) / 100;
+                summary.rate = rate;
+            }
         }
     }
 
