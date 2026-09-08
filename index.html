@@ -7593,8 +7593,44 @@ async function cloudSyncUpload() {
     if (!cfg || !cfg.url || !cfg.anonKey || !cfg.userKey) return false;
     __cloudSyncInFlight = true;
     try {
-        const endpoint = cfg.url + '/rest/v1/' + CLOUD_TABLE;
         const payload = cloudCollectPayload();
+        // ===== 防数据丢失保护 =====
+        // 1) 本地盘源+客源全空时，禁止上传（避免把云端数据清空）
+        let _lp = [], _lc = [];
+        try { _lp = loadProperties(); } catch (e) {}
+        try { _lc = loadCustomers(); } catch (e) {}
+        if (!Array.isArray(_lp)) _lp = [];
+        if (!Array.isArray(_lc)) _lc = [];
+        if (_lp.length === 0 && _lc.length === 0) {
+            __cloudSyncLastError = '';
+            return false;
+        }
+        // 2) 本地盘源为空但云端有盘源时，从云端保留（只更新本地非空部分，防止空覆盖）
+        if (_lp.length === 0) {
+            try {
+                const rows = await fetch(cfg.url + '/rest/v1/' + CLOUD_TABLE + '?user_key=eq.' + encodeURIComponent(cfg.userKey) + '&select=payload&limit=1', {
+                    method: 'GET',
+                    headers: { 'apikey': cfg.anonKey, 'Authorization': 'Bearer ' + cfg.anonKey }
+                }).then(r => r.ok ? r.json() : []).catch(() => []);
+                if (Array.isArray(rows) && rows.length > 0 && rows[0].payload && rows[0].payload[PRO_STORAGE] != null) {
+                    payload[PRO_STORAGE] = rows[0].payload[PRO_STORAGE];
+                }
+            } catch (e) {}
+        }
+        // 3) 本地客源为空但云端有客源时，从云端保留（同理）
+        if (_lc.length === 0) {
+            try {
+                const rows = await fetch(cfg.url + '/rest/v1/' + CLOUD_TABLE + '?user_key=eq.' + encodeURIComponent(cfg.userKey) + '&select=payload&limit=1', {
+                    method: 'GET',
+                    headers: { 'apikey': cfg.anonKey, 'Authorization': 'Bearer ' + cfg.anonKey }
+                }).then(r => r.ok ? r.json() : []).catch(() => []);
+                if (Array.isArray(rows) && rows.length > 0 && rows[0].payload && rows[0].payload[CUS_STORAGE] != null) {
+                    payload[CUS_STORAGE] = rows[0].payload[CUS_STORAGE];
+                }
+            } catch (e) {}
+        }
+        // ===== 防数据丢失保护结束 =====
+        const endpoint = cfg.url + '/rest/v1/' + CLOUD_TABLE;
         const body = JSON.stringify({
             user_key: cfg.userKey,
             payload: payload,
