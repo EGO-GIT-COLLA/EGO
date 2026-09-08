@@ -4420,18 +4420,28 @@ box-shadow:0 20px 60px rgba(0,0,0,0.4);color:inherit;
             <button id="gsTagMgrClose" type="button" style="background:none;border:none;color:${textHint};font-size:24px;line-height:1;cursor:pointer;padding:2px 6px;">✕</button>
         </div>
         <!-- 新增标签输入 -->
-        <div style="padding:12px 18px;border-bottom:1px dashed ${chipBd};background:${bgSoft};">
-            <div style="font-size:12.5px;color:${textHint};margin-bottom:6px;">➕ 新建自定义标签（回车也可添加）</div>
-            <div style="display:flex;gap:8px;">
-                <input type="text" id="gsTagMgrInput" placeholder="输入新标签名，如：回报率5%以上、学区房、有证..."
-                       style="flex:1;padding:9px 12px;border-radius:10px;border:1px solid ${chipBd};background:${bg};color:inherit;font-size:14px;outline:none;">
-                <button id="gsTagMgrAdd" type="button" style="background:linear-gradient(135deg,#d4af37,#b8860b);color:#fff;border:none;border-radius:10px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer;">添加</button>
+        <div style="padding:12px 18px;border-bottom:1px dashed ${chipBd};background:${bgSoft};display:flex;flex-direction:column;gap:10px;">
+            <div>
+                <div style="font-size:12.5px;color:${textHint};margin-bottom:6px;">🏠 ➕ 新建盘源自定义标签（回车也可添加）</div>
+                <div style="display:flex;gap:8px;">
+                    <input type="text" id="gsTagMgrInput" placeholder="输入新标签名，如：回报率5%以上、学区房、有证..."
+                           style="flex:1;padding:9px 12px;border-radius:10px;border:1px solid ${chipBd};background:${bg};color:inherit;font-size:14px;outline:none;">
+                    <button id="gsTagMgrAdd" type="button" style="background:linear-gradient(135deg,#d4af37,#b8860b);color:#fff;border:none;border-radius:10px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer;">添加</button>
+                </div>
+            </div>
+            <div>
+                <div style="font-size:12.5px;color:${textHint};margin-bottom:6px;">👤 ➕ 新建客源自定义标签（回车也可添加）</div>
+                <div style="display:flex;gap:8px;">
+                    <input type="text" id="gsTagMgrCusInput" placeholder="输入新标签名，如：首付3成、改善型、急售..."
+                           style="flex:1;padding:9px 12px;border-radius:10px;border:1px solid ${chipBd};background:${bg};color:inherit;font-size:14px;outline:none;">
+                    <button id="gsTagMgrCusAdd" type="button" style="background:linear-gradient(135deg,#4a90d9,#2f6cb0);color:#fff;border:none;border-radius:10px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer;">添加</button>
+                </div>
             </div>
         </div>
         <!-- 标签列表 -->
         <div id="gsTagMgrList" style="padding:14px 18px;overflow:auto;flex:1 1 auto;"></div>
         <div style="padding:10px 18px calc(14px + env(safe-area-inset-bottom));border-top:1px solid ${borderC};background:${bgSoft};font-size:12px;color:${textHint};line-height:1.55;">
-          💡 内置的「总价档 / 物业类型」标签不可删除或改名；自定义标签改动后，所有盘源的标签、搜索页快捷标签和筛选结果都会立即同步刷新。
+          💡 内置的「总价档 / 物业类型 / 客源类型」标签不可删除或改名；自定义标签改动后，所有盘源/客源的标签、搜索页快捷标签和筛选结果都会立即同步刷新。
         </div>
     `;
     mask.appendChild(box);
@@ -4470,6 +4480,29 @@ box-shadow:0 20px 60px rgba(0,0,0,0.4);color:inherit;
     };
     addBtn.onclick = doAdd;
     addTagInput.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); doAdd(); } };
+    // 事件：客源标签添加（回车 + 按钮）
+    const cusAddInput = document.getElementById('gsTagMgrCusInput');
+    const cusAddBtn = document.getElementById('gsTagMgrCusAdd');
+    const doAddCus = () => {
+        const v = (cusAddInput.value || '').trim();
+        if (!v) return;
+        if (typeof CUS_TAGS !== 'undefined' && CUS_TAGS.indexOf(v) >= 0) {
+            alert('该标签名与系统内置客源标签重名了，换一个吧～');
+            return;
+        }
+        const tags = loadCusTags();
+        if (!tags.includes(v)) { tags.push(v); saveCusTags(tags); }
+        cusAddInput.value = '';
+        _gsRefreshTagMgrList();
+        if (typeof renderCusTagChips === 'function') renderCusTagChips();
+        if (typeof renderCustomerList === 'function') renderCustomerList();
+        if (typeof invalidateGsQtCache === 'function') invalidateGsQtCache();
+        if (typeof renderGsQuickTags === 'function') renderGsQuickTags();
+        if (typeof renderGlobalResults === 'function') renderGlobalResults();
+        cusAddInput.focus();
+    };
+    cusAddBtn.onclick = doAddCus;
+    cusAddInput.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); doAddCus(); } };
     // Esc 关闭
     const escFn = (e) => { if (e.key === 'Escape') { _gsRemoveTagMgr(); document.removeEventListener('keydown', escFn); } };
     document.addEventListener('keydown', escFn);
@@ -4488,42 +4521,60 @@ function _gsRemoveTagMgr() {
     }
 }
 
-/* 重新渲染：管理弹窗里的自定义标签列表 */
+/* 重新渲染：管理弹窗里的自定义标签列表（盘源 + 客源两组） */
 function _gsRefreshTagMgrList() {
     const host = document.getElementById('gsTagMgrList');
     if (!host) return;
-    const allTags = loadProTags() || [];
-    const custom = allTags.filter(t => t && !(typeof PRO_BUILTIN_TAGS !== 'undefined' && PRO_BUILTIN_TAGS.has(t)));
-    if (custom.length === 0) {
-        host.innerHTML = `<div style="padding:32px 8px;text-align:center;color:${getComputedStyle(document.documentElement).getPropertyValue('--text-hint') || '#999'};font-size:13px;">
-还没有自定义标签哦～<br>在上面输入框里新建一个，比如「回报率5%以上」「学区房」「有证」都可以。</div>`;
-        return;
-    }
-    // 统计每个自定义标签被多少个盘源使用
-    const usages = new Map();
-    (loadProperties() || []).forEach(p => {
-        (p.tags || []).forEach(t => { if (custom.indexOf(t) >= 0) usages.set(t, (usages.get(t) || 0) + 1); });
-    });
     const borderC = getComputedStyle(document.documentElement).getPropertyValue('--card-border') || '#ececec';
     const textHint = getComputedStyle(document.documentElement).getPropertyValue('--text-hint') || '#999';
     const bg = getComputedStyle(document.documentElement).getPropertyValue('--card') || '#fff';
-    host.innerHTML = `
-<div style="font-size:12.5px;color:${textHint};margin-bottom:8px;">共 ${custom.length} 个自定义标签</div>
-<div style="display:grid;grid-template-columns:1fr;gap:8px;">
-    ${custom.map(t => {
-        const cnt = usages.get(t) || 0;
-        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid ${borderC};border-radius:12px;background:${bg};">
+    const chipBd = getComputedStyle(document.documentElement).getPropertyValue('--chip-border') || '#e5e5e5';
+
+    // ---- 盘源自定义标签 ----
+    const allProTags = (typeof loadProTags === 'function' ? loadProTags() : []) || [];
+    const proCustom = allProTags.filter(t => t && !(typeof PRO_BUILTIN_TAGS !== 'undefined' && PRO_BUILTIN_TAGS.has(t)));
+    const proUsages = new Map();
+    (loadProperties() || []).forEach(p => {
+        (p.tags || []).forEach(t => { if (proCustom.indexOf(t) >= 0) proUsages.set(t, (proUsages.get(t) || 0) + 1); });
+    });
+
+    // ---- 客源自定义标签 ----
+    const allCusTags = (typeof loadCusTags === 'function' ? loadCusTags() : []) || [];
+    const cusCustom = allCusTags.filter(t => t && !(typeof CUS_TAGS !== 'undefined' && CUS_TAGS.indexOf(t) >= 0));
+    const cusUsages = new Map();
+    (loadCustomers() || []).forEach(c => {
+        (c.tags || []).forEach(t => { if (cusCustom.indexOf(t) >= 0) cusUsages.set(t, (cusUsages.get(t) || 0) + 1); });
+    });
+
+    if (proCustom.length === 0 && cusCustom.length === 0) {
+        host.innerHTML = `<div style="padding:32px 8px;text-align:center;color:${textHint};font-size:13px;">
+还没有自定义标签哦～<br>在上面输入框里新建，盘源标签如「回报率5%以上」「学区房」，客源标签如「首付3成」「急售」都可以。</div>`;
+        return;
+    }
+    const row = (t, cnt, unit, rn, dl) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid ${borderC};border-radius:12px;background:${bg};">
             <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
                 <span style="padding:3px 10px;border-radius:999px;background:rgba(212,175,55,0.15);border:1px solid #d4af37;color:#b8860b;font-weight:700;font-size:13px;">🏷️ ${escapeHTML(t)}</span>
-                <span style="font-size:12px;color:${textHint};white-space:nowrap;">被 ${cnt} 条盘源使用</span>
+                <span style="font-size:12px;color:${textHint};white-space:nowrap;">被 ${cnt} 条${unit}使用</span>
             </div>
             <div style="display:flex;gap:6px;flex-shrink:0;">
-                <button type="button" onclick="_gsTagMgrRename('${escapeAttr(t)}')" style="background:none;border:1px solid #d4af37;color:#b8860b;border-radius:999px;padding:5px 10px;font-size:12px;cursor:pointer;font-weight:600;">✏️ 改名</button>
-                <button type="button" onclick="_gsTagMgrDelete('${escapeAttr(t)}')" style="background:none;border:1px solid #dc5050;color:#dc5050;border-radius:999px;padding:5px 10px;font-size:12px;cursor:pointer;font-weight:600;">🗑️ 删除</button>
+                <button type="button" onclick="${rn}('${escapeAttr(t)}')" style="background:none;border:1px solid #d4af37;color:#b8860b;border-radius:999px;padding:5px 10px;font-size:12px;cursor:pointer;font-weight:600;">✏️ 改名</button>
+                <button type="button" onclick="${dl}('${escapeAttr(t)}')" style="background:none;border:1px solid #dc5050;color:#dc5050;border-radius:999px;padding:5px 10px;font-size:12px;cursor:pointer;font-weight:600;">🗑️ 删除</button>
             </div>
         </div>`;
-    }).join('')}
+    let html = '';
+    if (proCustom.length) {
+        html += `<div style="font-size:13px;font-weight:700;color:#b8860b;margin:14px 0 8px;">🏠 盘源自定义标签（共 ${proCustom.length} 个）</div>
+<div style="display:grid;grid-template-columns:1fr;gap:8px;">
+    ${proCustom.map(t => row(t, proUsages.get(t) || 0, '盘源', '_gsTagMgrRename', '_gsTagMgrDelete')).join('')}
 </div>`;
+    }
+    if (cusCustom.length) {
+        html += `<div style="font-size:13px;font-weight:700;color:#2f6cb0;margin:16px 0 8px;">👤 客源自定义标签（共 ${cusCustom.length} 个）</div>
+<div style="display:grid;grid-template-columns:1fr;gap:8px;">
+    ${cusCustom.map(t => row(t, cusUsages.get(t) || 0, '客源', '_gsTagMgrRenameCus', '_gsTagMgrDeleteCus')).join('')}
+</div>`;
+    }
+    host.innerHTML = html;
 }
 
 /* 在管理弹窗里点「改名」 */
@@ -4561,6 +4612,32 @@ function _gsTagMgrDelete(name) {
         if (typeof renderProTagFilter === 'function') renderProTagFilter();
         if (typeof renderSelectedFilterBar === 'function') renderSelectedFilterBar();
         if (typeof renderPropertyList === 'function') renderPropertyList();
+    }
+}
+
+/* 在管理弹窗里点「客源标签改名」 */
+function _gsTagMgrRenameCus(name) {
+    if (typeof renameCusTag === 'function') {
+        renameCusTag(name);
+        _gsRefreshTagMgrList();
+        if (typeof renderCusTagChips === 'function') renderCusTagChips();
+        if (typeof renderCustomerList === 'function') renderCustomerList();
+        if (typeof invalidateGsQtCache === 'function') invalidateGsQtCache();
+        if (typeof renderGsQuickTags === 'function') renderGsQuickTags();
+        if (typeof renderGlobalResults === 'function') renderGlobalResults();
+    }
+}
+
+/* 在管理弹窗里点「客源标签删除」 */
+function _gsTagMgrDeleteCus(name) {
+    if (typeof deleteCusTag === 'function') {
+        deleteCusTag(name);
+        _gsRefreshTagMgrList();
+        if (typeof renderCusTagChips === 'function') renderCusTagChips();
+        if (typeof renderCustomerList === 'function') renderCustomerList();
+        if (typeof invalidateGsQtCache === 'function') invalidateGsQtCache();
+        if (typeof renderGsQuickTags === 'function') renderGsQuickTags();
+        if (typeof renderGlobalResults === 'function') renderGlobalResults();
     }
 }
 
