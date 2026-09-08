@@ -8635,10 +8635,22 @@ updateAuthUI();
 
 (function autoCloudSyncOnLoad() {
     updateAutoSyncUI();
-    // 打开页面自动同步（无需登录）：先上传本地最新变更（防丢失），再强制从云端拉取覆盖（保证多设备实时一致）
+    // 打开页面自动同步（无需登录）：
+    //   1) 本地有数据才先上传（防丢本地新数据，同时避免空数据覆盖云端）
+    //   2) 无论是否有本地数据，都强制从云端拉取覆盖，保证多设备打开即实时一致
     if (isAutoSyncEnabled()) {
         (async () => {
-            try { await cloudSyncNow(); } catch (e) {}
+            try {
+                let hasLocal = false;
+                try {
+                    const pl = JSON.parse(localStorage.getItem(PRO_STORAGE) || '[]');
+                    const cl = JSON.parse(localStorage.getItem(CUS_STORAGE) || '[]');
+                    hasLocal = (Array.isArray(pl) && pl.length > 0) || (Array.isArray(cl) && cl.length > 0);
+                } catch (e) {}
+                if (hasLocal) {
+                    try { await cloudSyncNow(); } catch (e) {}
+                }
+            } catch (e) {}
             try { await cloudPullAndApplyIfNewer(true); } catch (e) {}
         })();
     }
