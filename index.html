@@ -8635,9 +8635,12 @@ updateAuthUI();
 
 (function autoCloudSyncOnLoad() {
     updateAutoSyncUI();
-    // 打开页面自动从云端拉取最新数据（只要配置了Supabase，无需登录）
+    // 打开页面自动同步（无需登录）：先上传本地最新变更（防丢失），再强制从云端拉取覆盖（保证多设备实时一致）
     if (isAutoSyncEnabled()) {
-        cloudPullAndApplyIfNewer();
+        (async () => {
+            try { await cloudSyncNow(); } catch (e) {}
+            try { await cloudPullAndApplyIfNewer(true); } catch (e) {}
+        })();
     }
     startAutoSyncTimer();
 })();
