@@ -7605,30 +7605,40 @@ async function cloudSyncUpload() {
             __cloudSyncLastError = '';
             return false;
         }
-        // 2) 本地盘源为空但云端有盘源时，从云端保留（只更新本地非空部分，防止空覆盖）
-        if (_lp.length === 0) {
-            try {
-                const rows = await fetch(cfg.url + '/rest/v1/' + CLOUD_TABLE + '?user_key=eq.' + encodeURIComponent(cfg.userKey) + '&select=payload&limit=1', {
-                    method: 'GET',
-                    headers: { 'apikey': cfg.anonKey, 'Authorization': 'Bearer ' + cfg.anonKey }
-                }).then(r => r.ok ? r.json() : []).catch(() => []);
-                if (Array.isArray(rows) && rows.length > 0 && rows[0].payload && rows[0].payload[PRO_STORAGE] != null) {
-                    payload[PRO_STORAGE] = rows[0].payload[PRO_STORAGE];
+        // 2/3/4) 上传前拉取云端一次，做合并保护（防空覆盖 + 防残留标签污染）
+        try {
+            const rows = await fetch(cfg.url + '/rest/v1/' + CLOUD_TABLE + '?user_key=eq.' + encodeURIComponent(cfg.userKey) + '&select=payload&limit=1', {
+                method: 'GET',
+                headers: { 'apikey': cfg.anonKey, 'Authorization': 'Bearer ' + cfg.anonKey }
+            }).then(r => r.ok ? r.json() : []).catch(() => []);
+            const cloudPayload = (Array.isArray(rows) && rows.length > 0 && rows[0].payload) ? rows[0].payload : null;
+            if (cloudPayload) {
+                // 2) 本地盘源为空但云端有盘源时，从云端保留（只更新本地非空部分，防止空覆盖）
+                if (_lp.length === 0 && cloudPayload[PRO_STORAGE] != null) {
+                    payload[PRO_STORAGE] = cloudPayload[PRO_STORAGE];
                 }
-            } catch (e) {}
-        }
-        // 3) 本地客源为空但云端有客源时，从云端保留（同理）
-        if (_lc.length === 0) {
-            try {
-                const rows = await fetch(cfg.url + '/rest/v1/' + CLOUD_TABLE + '?user_key=eq.' + encodeURIComponent(cfg.userKey) + '&select=payload&limit=1', {
-                    method: 'GET',
-                    headers: { 'apikey': cfg.anonKey, 'Authorization': 'Bearer ' + cfg.anonKey }
-                }).then(r => r.ok ? r.json() : []).catch(() => []);
-                if (Array.isArray(rows) && rows.length > 0 && rows[0].payload && rows[0].payload[CUS_STORAGE] != null) {
-                    payload[CUS_STORAGE] = rows[0].payload[CUS_STORAGE];
+                // 3) 本地客源为空但云端有客源时，从云端保留（同理）
+                if (_lc.length === 0 && cloudPayload[CUS_STORAGE] != null) {
+                    payload[CUS_STORAGE] = cloudPayload[CUS_STORAGE];
                 }
-            } catch (e) {}
-        }
+                // 4) 标签池保护：以云端为主，只补充本地「实际被盘源使用」的新标签，
+                //    防止历史残留/已删除标签（如已删的旧自定义标签）随上传重新污染云端
+                if (cloudPayload[PRO_TAG_STORAGE] != null) {
+                    try {
+                        const cloudTags = JSON.parse(cloudPayload[PRO_TAG_STORAGE]);
+                        const merged = Array.isArray(cloudTags) ? cloudTags.slice() : [];
+                        const used = new Set();
+                        _lp.forEach(p => { (p.tags || []).forEach(t => used.add(t)); });
+                        let localTags = [];
+                        try { localTags = JSON.parse(localStorage.getItem(PRO_TAG_STORAGE) || '[]'); } catch (e) {}
+                        (Array.isArray(localTags) ? localTags : []).forEach(t => {
+                            if (t && merged.indexOf(t) < 0 && used.has(t)) merged.push(t);
+                        });
+                        payload[PRO_TAG_STORAGE] = JSON.stringify(merged);
+                    } catch (e) {}
+                }
+            }
+        } catch (e) {}
         // ===== 防数据丢失保护结束 =====
         const endpoint = cfg.url + '/rest/v1/' + CLOUD_TABLE;
         const body = JSON.stringify({
