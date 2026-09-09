@@ -8090,13 +8090,15 @@ async function cloudRefreshAllMerge(notify) {
             if (Array.isArray(rows) && rows.length > 0 && rows[0] && rows[0].payload) {
                 const payload = rows[0].payload;
                 if (payload[PRO_STORAGE] != null) {
-                    const arr = JSON.parse(payload[PRO_STORAGE] || '[]');
+                    const rawPro = typeof payload[PRO_STORAGE] === 'string' ? payload[PRO_STORAGE] : JSON.stringify(payload[PRO_STORAGE]);
+                    const arr = JSON.parse(rawPro || '[]');
                     localStorage.setItem(PRO_STORAGE, JSON.stringify(Array.isArray(arr) ? arr.map(normalizeProperty) : []));
                     cloudProCnt = Array.isArray(arr) ? arr.length : 0;
                     try { localStorage.setItem(CLOUD_PRO_CACHE, JSON.stringify({ ts: Date.now(), items: cloudProCnt, cloudCnt: cloudProCnt })); } catch (e) {}
                 }
                 if (payload[CUS_STORAGE] != null) {
-                    const arr = JSON.parse(payload[CUS_STORAGE] || '[]');
+                    const rawCus = typeof payload[CUS_STORAGE] === 'string' ? payload[CUS_STORAGE] : JSON.stringify(payload[CUS_STORAGE]);
+                    const arr = JSON.parse(rawCus || '[]');
                     localStorage.setItem(CUS_STORAGE, JSON.stringify(Array.isArray(arr) ? arr : []));
                     cloudCusCnt = Array.isArray(arr) ? arr.length : 0;
                     try { localStorage.setItem(CLOUD_CUS_CACHE, JSON.stringify({ ts: Date.now(), items: cloudCusCnt, cloudCnt: cloudCusCnt })); } catch (e) {}
@@ -8736,8 +8738,16 @@ async function cloudPullAndApplyIfNewer(force) {
             const localTs = Number(localStorage.getItem(CLOUD_LAST_SYNC_KEY) || 0);
             if (cloudTs && localTs && cloudTs <= localTs) return; // 本地已是最新
         }
-        BACKUP_KEYS.forEach(k => { if (payload[k] != null) localStorage.setItem(k, payload[k]); });
-        if (payload[BACKUP_APP_KEY] != null) localStorage.setItem(BACKUP_APP_KEY, payload[BACKUP_APP_KEY]);
+        BACKUP_KEYS.forEach(k => {
+            if (payload[k] != null) {
+                const v = typeof payload[k] === 'string' ? payload[k] : JSON.stringify(payload[k]);
+                localStorage.setItem(k, v);
+            }
+        });
+        if (payload[BACKUP_APP_KEY] != null) {
+            const v = typeof payload[BACKUP_APP_KEY] === 'string' ? payload[BACKUP_APP_KEY] : JSON.stringify(payload[BACKUP_APP_KEY]);
+            localStorage.setItem(BACKUP_APP_KEY, v);
+        }
         localStorage.setItem(CLOUD_LAST_SYNC_KEY, String(Date.now()));
         updateAutoSyncUI && updateAutoSyncUI();
         renderCusTagChips && renderCusTagChips();
