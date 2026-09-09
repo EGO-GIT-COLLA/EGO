@@ -6039,7 +6039,12 @@ function loadCustomers() {
 }
 function saveCustomers(list) {
     localStorage.setItem(CUS_STORAGE, JSON.stringify(list));
-    if (typeof cloudSyncDebounced === 'function') cloudSyncDebounced();
+    // 客源按账号隔离：登录态同步到本账号业务表（聚合桶不再携带客源）
+    if (typeof authGetSession === 'function' && authGetSession() && typeof cloudPushMyCustomers === 'function') {
+        cloudPushMyCustomers();
+    } else if (typeof cloudSyncDebounced === 'function') {
+        cloudSyncDebounced();
+    }
 }
 
 function renderCusTagChips() {
@@ -7585,20 +7590,8 @@ function isAdmin() { return getCachedRole() === 'admin'; }
 function updateAuthUI() {
     const session = authGetSession();
     const cusBtn = document.getElementById('tabBtnCustomer');
-    if (cusBtn) {
-        if (session) {
-            cusBtn.style.display = '';  // 登录后显示客源tab
-        } else {
-            cusBtn.style.display = 'none';  // 未登录隐藏客源tab
-        }
-    }
-    // 未登录时如果当前在客源tab，跳转到盘源
-    if (!session) {
-        const activePane = document.querySelector('.tab-pane.active');
-        if (activePane && activePane.id === 'tab-customer') {
-            switchTab('property');
-        }
-    }
+    // 客源tab始终显示：未登录可录入本地客源（登录后自动并入本账号云端客源）
+    if (cusBtn) cusBtn.style.display = '';
     // 管理员标识（在备份页账号面板显示）
     const roleBadge = document.getElementById('authRoleBadge');
     if (roleBadge) {
@@ -7691,6 +7684,8 @@ async function cloudSyncUpload() {
     __cloudSyncInFlight = true;
     try {
         const payload = cloudCollectPayload();
+        // 客源按账号隔离：聚合桶只同步盘源+标签，客源一律不走聚合桶（防跨账号泄露）
+        delete payload[CUS_STORAGE];
         // ===== 防数据丢失保护 =====
         // 1) 本地盘源+客源全空时，禁止上传（避免把云端数据清空）
         let _lp = [], _lc = [];
@@ -7713,10 +7708,6 @@ async function cloudSyncUpload() {
                 // 2) 本地盘源为空但云端有盘源时，从云端保留（只更新本地非空部分，防止空覆盖）
                 if (_lp.length === 0 && cloudPayload[PRO_STORAGE] != null) {
                     payload[PRO_STORAGE] = cloudPayload[PRO_STORAGE];
-                }
-                // 3) 本地客源为空但云端有客源时，从云端保留（同理）
-                if (_lc.length === 0 && cloudPayload[CUS_STORAGE] != null) {
-                    payload[CUS_STORAGE] = cloudPayload[CUS_STORAGE];
                 }
                 // 4) 标签池保护：以云端为主，只补充本地「实际被盘源使用」的新标签，
                 //    防止历史残留/已删除标签（如已删的旧自定义标签）随上传重新污染云端
@@ -8067,6 +8058,47 @@ async function cloudUpsertCustomer(c) {
     });
 }
 
+/** 登录态：从业务表拉取【本账号】的客源合并到本地 */
+async function cloudPullMyCustomers() {
+    const session = authGetSession();
+    if (!session) return;
+    try {
+        const rows = await restList(CLOUD_CUS_TABLE, {
+            select: 'id,data,updated_at',
+            order: 'updated_at.desc',
+            limit: '10000',
+            owner_id: 'eq.' + session.user.id
+        });
+        const map = new Map();
+        try { loadCustomers().forEach(c => map.set(String(c.id), c)); } catch (e) {}
+        (Array.isArray(rows) ? rows : []).forEach(r => {
+            if (r && r.data && r.id) map.set(String(r.id), r.data);
+        });
+        const merged = Array.from(map.values());
+        localStorage.setItem(CUS_STORAGE, JSON.stringify(merged));
+        try { localStorage.setItem(CLOUD_CUS_CACHE, JSON.stringify({ ts: Date.now(), items: merged.length, cloudCnt: merged.length })); } catch (e) {}
+        try { renderCustomerList && renderCustomerList(); } catch (e) {}
+        try { renderCusTagChips && renderCusTagChips(); } catch (e) {}
+        console.log('[cloudSync] 已同步本账号客源 ' + merged.length + ' 条');
+    } catch (e) { console.warn('[cloudSync] 拉取本账号客源失败：', e.message); }
+}
+
+/** 登录态：把本地客源批量上传到业务表（归属本账号） */
+async function cloudPushMyCustomers() {
+    const session = authGetSession();
+    if (!session) return;
+    let list = [];
+    try { list = loadCustomers(); } catch (e) {}
+    if (!Array.isArray(list) || list.length === 0) return;
+    const rows = list.filter(c => c && c.id).map(c => ({
+        id: String(c.id),
+        owner_id: session.user.id,
+        data: c,
+        updated_at: new Date((Number(c.updatedAt) || Number(c.createdAt)) || Date.now()).toISOString()
+    }));
+    try { await restUpsertBatch(CLOUD_CUS_TABLE, rows); } catch (e) { console.warn('[cloudSync] 上传客源失败：', e.message); }
+}
+
 /** 从隔离云端表删除一个客源（RLS 会校验 owner_id） */
 async function cloudDeleteCustomer(id) {
     if (!authGetSession()) return;
@@ -8096,13 +8128,8 @@ async function cloudRefreshAllMerge(notify) {
                     cloudProCnt = Array.isArray(arr) ? arr.length : 0;
                     try { localStorage.setItem(CLOUD_PRO_CACHE, JSON.stringify({ ts: Date.now(), items: cloudProCnt, cloudCnt: cloudProCnt })); } catch (e) {}
                 }
-                if (payload[CUS_STORAGE] != null) {
-                    const rawCus = typeof payload[CUS_STORAGE] === 'string' ? payload[CUS_STORAGE] : JSON.stringify(payload[CUS_STORAGE]);
-                    const arr = JSON.parse(rawCus || '[]');
-                    localStorage.setItem(CUS_STORAGE, JSON.stringify(Array.isArray(arr) ? arr : []));
-                    cloudCusCnt = Array.isArray(arr) ? arr.length : 0;
-                    try { localStorage.setItem(CLOUD_CUS_CACHE, JSON.stringify({ ts: Date.now(), items: cloudCusCnt, cloudCnt: cloudCusCnt })); } catch (e) {}
-                }
+                // 客源按账号隔离：聚合桶不含客源，登录态下从业务表拉取本账号客源
+                if (authGetSession()) { await cloudPullMyCustomers(); }
                 if (payload[PRO_TAG_STORAGE] != null) localStorage.setItem(PRO_TAG_STORAGE, payload[PRO_TAG_STORAGE]);
                 if (payload[BACKUP_APP_KEY] != null) localStorage.setItem(BACKUP_APP_KEY, payload[BACKUP_APP_KEY]);
                 localStorage.setItem(CLOUD_LAST_SYNC_KEY, String(Date.now()));
@@ -8125,7 +8152,8 @@ async function cloudRefreshAllMerge(notify) {
         // 聚合桶无数据时回退：从明细表合并
         const [pros, cuss] = await Promise.all([
             restList(CLOUD_PRO_TABLE, { select: 'id,data,updated_at', order: 'updated_at.desc', limit: '10000' }),
-            restList(CLOUD_CUS_TABLE, { select: 'id,data,updated_at', order: 'updated_at.desc', limit: '10000' })
+            restList(CLOUD_CUS_TABLE, { select: 'id,data,updated_at', order: 'updated_at.desc', limit: '10000',
+                owner_id: 'eq.' + session.user.id })
         ]);
 
         // 合并盘源
@@ -8738,7 +8766,8 @@ async function cloudPullAndApplyIfNewer(force) {
             const localTs = Number(localStorage.getItem(CLOUD_LAST_SYNC_KEY) || 0);
             if (cloudTs && localTs && cloudTs <= localTs) return; // 本地已是最新
         }
-        BACKUP_KEYS.forEach(k => {
+        // 盘源/标签随聚合桶同步；客源按账号隔离（登录态从业务表拉取，不走聚合桶）
+        [PRO_STORAGE, PRO_TAG_STORAGE].forEach(k => {
             if (payload[k] != null) {
                 const v = typeof payload[k] === 'string' ? payload[k] : JSON.stringify(payload[k]);
                 localStorage.setItem(k, v);
@@ -8749,6 +8778,8 @@ async function cloudPullAndApplyIfNewer(force) {
             localStorage.setItem(BACKUP_APP_KEY, v);
         }
         localStorage.setItem(CLOUD_LAST_SYNC_KEY, String(Date.now()));
+        // 登录态：从业务表同步本账号客源
+        if (authGetSession()) { cloudPullMyCustomers(); }
         updateAutoSyncUI && updateAutoSyncUI();
         renderCusTagChips && renderCusTagChips();
         renderProTagChips && renderProTagChips();
