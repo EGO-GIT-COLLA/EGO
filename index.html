@@ -1278,6 +1278,15 @@
             line-height: 1.35;
             word-break: break-all;
         }
+        .star-filter-btn {
+            padding: 4px 10px; border: 1px solid var(--border); border-radius: 14px;
+            background: var(--card-bg); color: var(--text-main); font-size: 12px; cursor: pointer;
+            transition: all .15s ease;
+        }
+        .star-filter-btn:hover { border-color: var(--tag-a); }
+        .star-filter-btn.active {
+            background: var(--tag-a); border-color: var(--tag-a); color: #1a1a1a; font-weight: 600;
+        }
         .cus-star {
             flex-shrink: 0;
             font-size: 13px;
@@ -2288,8 +2297,14 @@
                            onkeydown="if(event.key==='Enter'){event.preventDefault(); renderCustomerList();}">
                     <button type="button" class="clear-btn" onclick="clearSearch('cusSearchBox','cusSearch',renderCustomerList)" title="清空搜索">✕</button>
                 </div>
-                <div style="margin-top:10px; text-align:right;">
-                    <button class="btn-text" onclick="clearCusFilter()">清空搜索</button>
+                <div style="margin-top:10px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <span class="k" style="font-size:12px; color:var(--text-hint);">星级：</span>
+                    <button type="button" class="star-filter-btn active" data-val="0" onclick="setCusStarFilter(0)">全部</button>
+                    <button type="button" class="star-filter-btn" data-val="1" onclick="setCusStarFilter(1)">⭐ 一星</button>
+                    <button type="button" class="star-filter-btn" data-val="2" onclick="setCusStarFilter(2)">⭐⭐ 二星</button>
+                    <button type="button" class="star-filter-btn" data-val="3" onclick="setCusStarFilter(3)">⭐⭐⭐ 三星</button>
+                    <span style="flex:1;"></span>
+                    <button class="btn-text" onclick="clearCusFilter()">清空</button>
                 </div>
             </div>
             </div>
@@ -6012,6 +6027,13 @@ const CUS_CUSTOM_TAGS_STORAGE = 're_cus_custom_tags_v1';
 let cusEditingId = null;
 let cusSelectedTags = new Set();
 let cusStar = 0;  // 客户星级：0=未选, 1/2/3 星
+let cusStarFilter = 0;  // 客源列表星级筛选：0=全部, 1/2/3 星
+
+function setCusStarFilter(val) {
+    cusStarFilter = val;
+    document.querySelectorAll('.star-filter-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.val) === cusStarFilter));
+    renderCustomerList();
+}
 
 // 客源标签池 = 系统内置 + 用户自定义（自定义持久化在 localStorage，按添加顺序）
 function loadCusTags() {
@@ -6265,6 +6287,8 @@ function deleteCustomer(id) {
 
 function clearCusFilter() {
     document.getElementById('cusSearch').value = '';
+    cusStarFilter = 0;
+    document.querySelectorAll('.star-filter-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.val) === 0));
     renderCustomerList();
 }
 
@@ -6302,6 +6326,8 @@ function renderCustomerList() {
     if (navCnt) navCnt.textContent = list.length;
 
     const kw = safeStr(document.getElementById('cusSearch').value).toLowerCase();
+    // 星级筛选按钮状态同步
+    document.querySelectorAll('.star-filter-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.val) === cusStarFilter));
     // 筛选/搜索变化 → 重置页码和折叠（用 hash 兜底）
     const filterHash = kw || '|';
     if (window.__cusLastFilterHash !== filterHash) {
@@ -6309,6 +6335,8 @@ function renderCustomerList() {
         window.__cusLastFilterHash = filterHash;
     }
     let filtered = kw ? list.filter(c => cusHaystack(c).includes(kw)) : list;
+    // 星级快速筛选（0=全部）
+    if (cusStarFilter > 0) filtered = filtered.filter(c => (c.star || 0) === cusStarFilter);
     // 最近点开/新增的前几位固定在最前，其余随机打乱（每次打开随机，方便加深记忆）
     filtered = _recentFirstThenShuffle(filtered, 1);
 
