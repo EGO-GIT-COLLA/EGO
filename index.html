@@ -7597,7 +7597,7 @@ const AUTH_ROLE_KEY = 're_auth_role_v1';  // 'admin' | 'user' | null
 
 /* 权限控制：未登录隐藏客源tab，登录后显示；管理员有最高权限 */
 async function fetchUserRole() {
-    const session = authGetSession();
+    const session = await authEnsureFreshSession();
     if (!session) { localStorage.removeItem(AUTH_ROLE_KEY); return null; }
     try {
         const cfg = cloudLoadConfig();
@@ -7920,7 +7920,7 @@ function _cloudRestUrl(table) { return cloudLoadConfig().url + '/rest/v1/' + tab
  * 列表查询。qps: URL 查询参数字典（例如 { select: '*', order: 'updated_at.desc', limit: '1000' }）
  */
 async function restList(table, qps) {
-    const session = authGetSession();
+    const session = await authEnsureFreshSession();
     const bearer = (session && session.access_token) ? session.access_token : cloudLoadConfig().anonKey;
     let url = _cloudRestUrl(table);
     if (qps && Object.keys(qps).length) {
@@ -7936,7 +7936,7 @@ async function restList(table, qps) {
 }
 /** upsert 单行（主键冲突则更新）。extra 可附加 owner_id 等字段。返回成功行（数组第一个） */
 async function restUpsert(table, pkCol, row) {
-    const session = authGetSession();
+    const session = await authEnsureFreshSession();
     const bearer = (session && session.access_token) ? session.access_token : cloudLoadConfig().anonKey;
     const res = await fetch(_cloudRestUrl(table), {
         method: 'POST',
@@ -7953,7 +7953,7 @@ async function restUpsert(table, pkCol, row) {
 /** 批量 upsert（主键冲突→更新），数组中的每条必须带主键字段 */
 async function restUpsertBatch(table, rows) {
     if (!Array.isArray(rows) || rows.length === 0) return [];
-    const session = authGetSession();
+    const session = await authEnsureFreshSession();
     const bearer = (session && session.access_token) ? session.access_token : cloudLoadConfig().anonKey;
     const res = await fetch(_cloudRestUrl(table), {
         method: 'POST',
@@ -7968,7 +7968,7 @@ async function restUpsertBatch(table, rows) {
 }
 /** 按主键删除一行 */
 async function restDelete(table, pkCol, pkVal) {
-    const session = authGetSession();
+    const session = await authEnsureFreshSession();
     const bearer = (session && session.access_token) ? session.access_token : cloudLoadConfig().anonKey;
     const url = _cloudRestUrl(table) + '?' + encodeURIComponent(pkCol) + '=eq.' + encodeURIComponent(pkVal);
     const res = await fetch(url, { method: 'DELETE', headers: _cloudRestHeaders(bearer) });
@@ -7980,7 +7980,7 @@ async function restDelete(table, pkCol, pkVal) {
 }
 /** 更新 Supabase Auth 自身用户的 metadata（头像/昵称/手机号） */
 async function authUpdateProfile(partialMeta) {
-    const session = authGetSession();
+    const session = await authEnsureFreshSession();
     if (!session) throw new Error('未登录');
     const cfg = cloudLoadConfig();
     const res = await fetch(cfg.url + '/auth/v1/user', {
@@ -8074,7 +8074,7 @@ async function cloudDeleteProperty(id) {
 
 /** 把一个客源对象 upsert 到隔离云端表 re_customers（自动带 owner_id） */
 async function cloudUpsertCustomer(c) {
-    const session = authGetSession();
+    const session = await authEnsureFreshSession();
     if (!session) return;
     if (!c || !c.id) return;
     const isoTs = new Date().toISOString();
@@ -8088,7 +8088,7 @@ async function cloudUpsertCustomer(c) {
 
 /** 登录态：从业务表拉取【本账号】的客源合并到本地 */
 async function cloudPullMyCustomers() {
-    const session = authGetSession();
+    const session = await authEnsureFreshSession();
     if (!session) return;
     try {
         const rows = await restList(CLOUD_CUS_TABLE, {
@@ -8113,7 +8113,7 @@ async function cloudPullMyCustomers() {
 
 /** 登录态：把本地客源批量上传到业务表（归属本账号） */
 async function cloudPushMyCustomers() {
-    const session = authGetSession();
+    const session = await authEnsureFreshSession();
     if (!session) return;
     let list = [];
     try { list = loadCustomers(); } catch (e) {}
@@ -8129,7 +8129,7 @@ async function cloudPushMyCustomers() {
 
 /** 从隔离云端表删除一个客源（RLS 会校验 owner_id） */
 async function cloudDeleteCustomer(id) {
-    if (!authGetSession()) return;
+    if (!(await authEnsureFreshSession())) return;
     if (!id) return;
     await restDelete(CLOUD_CUS_TABLE, 'id', String(id));
 }
@@ -8313,6 +8313,43 @@ function authGetSession() {
 }
 function authSaveSession(session) {
     try { localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session)); } catch (e) {}
+}
+function _jwtExp(accessToken) {
+    try {
+        const payload = accessToken.split('.')[1];
+        const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+        return json.exp ? json.exp * 1000 : 0;
+    } catch (e) { return 0; }
+}
+/* 确保登录令牌有效：将过期/已过期时用 refresh_token 自动刷新（Supabase token 1小时失效，不刷新则云同步全断） */
+async function authEnsureFreshSession() {
+    const session = authGetSession();
+    if (!session) return null;
+    const exp = _jwtExp(session.access_token);
+    if (exp && exp > Date.now() + 60000) return session;  // 还有效（提前1分钟刷新）
+    try {
+        const cfg = cloudLoadConfig();
+        if (!cfg || !cfg.url || !session.refresh_token) { authClearSession(); updateAuthUI(); return null; }
+        const res = await fetch(cfg.url + '/auth/v1/token?grant_type=refresh_token', {
+            method: 'POST',
+            headers: { 'apikey': cfg.anonKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: session.refresh_token })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.access_token) {
+            authClearSession();
+            try { updateAuthUI(); } catch (e) {}
+            return null;
+        }
+        const fresh = {
+            access_token: data.access_token,
+            refresh_token: data.refresh_token || session.refresh_token,
+            user: session.user
+        };
+        authSaveSession(fresh);
+        console.log('[auth] 登录令牌已自动刷新');
+        return fresh;
+    } catch (e) { return session; }
 }
 function authClearSession() {
     try { localStorage.removeItem(AUTH_SESSION_KEY); } catch (e) {}
