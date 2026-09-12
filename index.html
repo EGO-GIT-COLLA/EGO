@@ -2787,41 +2787,13 @@ function parsePropertyOcr(raw) {
             if (seg && !result.tags.includes(seg.label)) result.tags.push(seg.label);
         }
     }
-    // 面积区间标签：根据面积自动归类
-    if (result.size) {
-        const sn = Number(result.size);
-        if (!isNaN(sn) && sn > 0) {
-            const sizeSegs = [
-                { label: '0-50㎡', min: 0, max: 50 },
-                { label: '50-100㎡', min: 50, max: 100 },
-                { label: '100-200㎡', min: 100, max: 200 },
-                { label: '200-500㎡', min: 200, max: 500 },
-                { label: '500-1000㎡', min: 500, max: 1000 },
-                { label: '1000㎡以上', min: 1000, max: Infinity }
-            ];
-            const seg = sizeSegs.find(s => sn >= s.min && (s.max === Infinity ? true : sn < s.max));
-            if (seg && !result.tags.includes(seg.label)) result.tags.push(seg.label);
-        }
-    }
+    // 面积区间标签：不再自动生成（用户要求不新增无关标签）
     // 租盘/售盘自动识别：有租金→租盘，有总价且无租金→售盘
     const hasRent = (result.rentMonthly && Number(result.rentMonthly) > 0) || (result.rentYearly && Number(result.rentYearly) > 0);
     const hasPrice = result.price && Number(result.price) > 0;
     if (hasRent && !result.tags.includes('租盘')) result.tags.push('租盘');
     if (hasPrice && !hasRent && !result.tags.includes('售盘')) result.tags.push('售盘');
-    // 回报率标签：根据总价和年租金自动计算回报率区间
-    if (hasPrice && hasRent) {
-        const pn = Number(result.price);
-        const yearlyWan = result.rentYearly ? Number(result.rentYearly) : (result.rentMonthly ? Number(result.rentMonthly) * 12 / 10000 : 0);
-        if (pn > 0 && yearlyWan > 0) {
-            const ror = yearlyWan / pn * 100;
-            let rorTag = '';
-            if (ror >= 8) rorTag = '高回报≥8%';
-            else if (ror >= 5) rorTag = '中回报5-8%';
-            else if (ror >= 3) rorTag = '低回报3-5%';
-            else rorTag = '微回报<3%';
-            if (rorTag && !result.tags.includes(rorTag)) result.tags.push(rorTag);
-        }
-    }
+    // 回报率标签：不再自动生成（用户要求不新增无关标签）
     return result;
 }
 
@@ -3166,15 +3138,8 @@ function extractTagsFromText(text, opts) {
     return Array.from(matched);
 }
 function ensureProTagsFromList(tags) {
-    const pool = loadProTags();
-    const presets = ['学区', '地铁', '满五唯一', '精装', '毛坯', '电梯', '朝南', '南北通透', '带车位', '可谈价', '急售', '海景', '新房', '次新房', '投资'];
-    let changed = false;
-    tags.forEach(t => {
-        if (presets.includes(t) || pool.includes(t)) return;
-        pool.push(t);
-        changed = true;
-    });
-    if (changed) saveProTags(pool);
+    // 不再自动新增标签进池（用户要求：粘贴识别不新增无关标签、不改动现有标签）
+    // 识别出的标签若已存在于标签池则正常勾选；池中没有的不会自动创建
     if (typeof renderProTagChips === 'function') renderProTagChips();
     if (typeof renderProTagFilter === 'function') renderProTagFilter();
 }
@@ -6977,6 +6942,29 @@ function resetPropertyForm() {
     hideError('proError');
 }
 
+let __proDupConfirmed = false;  // 重复提醒确认后跳过本次检测
+function _normProTitle(t) { return safeStr(t).replace(/[（(].*?[)）]/g, '').trim(); }
+/* 新增盘源重复检测：标题含同一小区名+总价接近 / 地址相同+总价接近 / 标题同+面积接近 → 疑似重复 */
+function _findDuplicateProperty(d, list) {
+    const t = _normProTitle(d.title);
+    const addr = safeStr(d.address);
+    const price = Number(d.price) || 0;
+    const size = Number(d.size) || 0;
+    for (const p of (Array.isArray(list) ? list : [])) {
+        if (!p || p.id === d.id) continue;
+        const pt = _normProTitle(p.title);
+        const pAddr = safeStr(p.address);
+        const pPrice = Number(p.price) || 0;
+        const pSize = Number(p.size) || 0;
+        const titleHit = t && pt && t.length >= 2 && pt.length >= 2 && (t.includes(pt) || pt.includes(t));
+        const addrHit = addr && pAddr && addr === pAddr;
+        const priceHit = price > 0 && pPrice > 0 && Math.abs(price - pPrice) / pPrice < 0.05;
+        const sizeHit = size > 0 && pSize > 0 && Math.abs(size - pSize) / pSize < 0.05;
+        if (addrHit && (priceHit || titleHit)) return p;
+        if (titleHit && (priceHit || sizeHit)) return p;
+    }
+    return null;
+}
 function submitProperty() {
     hideError('proError');
     const title = safeStr(document.getElementById('proTitle').value);
@@ -7036,6 +7024,18 @@ function submitProperty() {
 
     const list = loadProperties();
     const isEdit = !!proEditingId;
+    // 新增盘源：疑似重复 → 弹窗提醒（确认后才保存）
+    if (!isEdit && !__proDupConfirmed) {
+        const dup = _findDuplicateProperty(data, list);
+        if (dup) {
+            customConfirm('⚠️ 检测到可能与已有盘源重复：\n「' + (dup.title || '未命名') + '」 总价 ' + (dup.price || '?') + ' 万\n\n确认仍要保存吗？', () => {
+                __proDupConfirmed = true;
+                submitProperty();
+            });
+            return;
+        }
+    }
+    __proDupConfirmed = false;
     try {
         if (proEditingId) {
             const idx = list.findIndex(x => x.id === proEditingId);
