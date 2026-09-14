@@ -3977,7 +3977,15 @@ function renderGlobalResults() {
         || (kw && !hasCustomerTags)                // 只打了关键词，也没选客户标签 → 一起搜
     );
     const proHits = includeProperties
-        ? proAll.filter(p => _gsMatchProperty(p) && (!kw || proHaystack(p).includes(kw))).slice(0, 100)
+        ? proAll
+            .filter(p => _gsMatchProperty(p) && (!kw || proHaystack(p).includes(kw)))
+            // 搜索结果按回报率从高到低排序（无回报率的排最后）
+            .sort((a, b) => {
+                const ra = rateOfReturnPct(a), rb = rateOfReturnPct(b);
+                const va = isNaN(ra) ? -1 : ra, vb = isNaN(rb) ? -1 : rb;
+                return vb - va;
+            })
+            .slice(0, 100)
         : null;
 
     const cusHtml = cusHits === null
@@ -4075,7 +4083,15 @@ function _gsSearchSnapshot(type) {
         return { items: list.map(c => ({ id: c.id })) };
     }
     const proAll = loadProperties();
-    const list = proAll.filter(p => _gsMatchProperty(p) && (!kw || proHaystack(p).includes(kw))).slice(0, 200);
+    const list = proAll
+        .filter(p => _gsMatchProperty(p) && (!kw || proHaystack(p).includes(kw)))
+        // 与搜索结果列表保持同一排序：按回报率从高到低
+        .sort((a, b) => {
+            const ra = rateOfReturnPct(a), rb = rateOfReturnPct(b);
+            const va = isNaN(ra) ? -1 : ra, vb = isNaN(rb) ? -1 : rb;
+            return vb - va;
+        })
+        .slice(0, 200);
     return { items: list.map(p => ({ id: p.id })) };
 }
 function _gsRenderPreview(type, idx, items) {
