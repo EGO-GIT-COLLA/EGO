@@ -2087,8 +2087,16 @@
                             <button type="button" data-ratio="15" onclick="setLoanRatio(15)">1.5成</button>
                             <button type="button" data-ratio="20" onclick="setLoanRatio(20)">2成</button>
                             <button type="button" data-ratio="30" class="active" onclick="setLoanRatio(30)">3成</button>
-                            <button type="button" data-ratio="40" onclick="setLoanRatio(40)">4成</button>
                             <button type="button" data-ratio="50" onclick="setLoanRatio(50)">5成</button>
+                            <button type="button" data-ratio="70" onclick="setLoanRatio(70)">7成</button>
+                        </div>
+                        <div id="loanRatioAmounts" style="margin-top:6px;font-size:12.5px;color:var(--tag-a,#d4af37);font-weight:600;"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>首付金额 <span class="muted">（手动输入自动算出贷款金额）</span></label>
+                        <div class="input-wrapper">
+                            <input type="number" id="loanDownAmount" placeholder="首付金额" min="0" step="any" oninput="onLoanDownInput()">
+                            <span class="prefix prefix-right">万元</span>
                         </div>
                     </div>
                     <div class="form-group">
@@ -5578,15 +5586,20 @@ function setLoanRatio(r) {
     if (loanType === 'fund') autoFillFundOnly();
     calcLoan(true);
 }
-/* 根据总价和首付比例自动计算贷款金额并填入 */
+/* 根据总价和首付比例自动计算贷款/首付金额并填入 */
 function updateLoanAmount() {
     const totalWan = parseFloat(document.getElementById('loanTotalPrice').value);
     if (isNaN(totalWan) || totalWan <= 0) {
         document.getElementById('loanAmount').value = '';
+        document.getElementById('loanDownAmount').value = '';
+        updateLoanRatioAmounts();
         return;
     }
     const loan = totalWan * (1 - loanRatio / 100);
+    const down = totalWan * (loanRatio / 100);
     document.getElementById('loanAmount').value = loan.toFixed(2);
+    document.getElementById('loanDownAmount').value = down.toFixed(2);
+    updateLoanRatioAmounts();
 }
 /* 用户手动改贷款金额时，反推首付比例并更新按钮高亮 */
 function onLoanAmountInput() {
@@ -5600,14 +5613,53 @@ function onLoanAmountInput() {
     const ratio = Math.round((1 - loanWan / totalWan) * 100);
     loanRatio = ratio;
     // 更新按钮高亮（匹配预设值则高亮，否则全部不高亮）
-    const presets = [15, 20, 30, 40, 50];
+    const presets = [15, 20, 30, 50, 70];
     document.querySelectorAll('#tool-loan [data-ratio]').forEach(b => {
         b.classList.toggle('active', Number(b.dataset.ratio) === ratio);
     });
+    // 同步首付金额显示
+    document.getElementById('loanDownAmount').value = Math.max(0, totalWan - loanWan).toFixed(2);
+    updateLoanRatioAmounts();
     // 重新分配组合贷金额
     if (loanType === 'combo') autoFillComboAmount();
     if (loanType === 'fund') autoFillFundOnly();
     calcLoan(true);
+}
+/* 手动输入首付金额：自动算出贷款金额并反推比例 */
+function onLoanDownInput() {
+    const totalWan = parseFloat(document.getElementById('loanTotalPrice').value);
+    const downWan = parseFloat(document.getElementById('loanDownAmount').value);
+    if (isNaN(totalWan) || totalWan <= 0 || isNaN(downWan) || downWan < 0) {
+        calcLoan(true);
+        return;
+    }
+    const loan = Math.max(0, totalWan - downWan);
+    document.getElementById('loanAmount').value = loan.toFixed(2);
+    // 反推首付比例（高亮匹配的预设按钮）
+    const ratio = Math.round(downWan / totalWan * 100);
+    loanRatio = ratio;
+    const presets = [15, 20, 30, 50, 70];
+    document.querySelectorAll('#tool-loan [data-ratio]').forEach(b => {
+        b.classList.toggle('active', Number(b.dataset.ratio) === ratio);
+    });
+    updateLoanRatioAmounts();
+    if (loanType === 'combo') autoFillComboAmount();
+    if (loanType === 'fund') autoFillFundOnly();
+    calcLoan(true);
+}
+/* 首付比例下方实时显示：首付多少钱、贷款多少钱 */
+function updateLoanRatioAmounts() {
+    const el = document.getElementById('loanRatioAmounts');
+    if (!el) return;
+    const totalWan = parseFloat(document.getElementById('loanTotalPrice').value);
+    if (isNaN(totalWan) || totalWan <= 0) { el.textContent = ''; return; }
+    const down = parseFloat(document.getElementById('loanDownAmount').value);
+    const loan = parseFloat(document.getElementById('loanAmount').value);
+    const fmt = (v) => (isNaN(v) ? '' : v.toLocaleString('zh-CN', { maximumFractionDigits: 2 }));
+    const parts = [];
+    if (down !== undefined && !isNaN(down) && down > 0) parts.push('💵 首付 ' + fmt(down) + ' 万元');
+    if (loan !== undefined && !isNaN(loan) && loan > 0) parts.push('🏦 贷款 ' + fmt(loan) + ' 万元');
+    el.innerHTML = parts.join(' · ');
 }
 function setLoanYears(y) {
     if (y === 'custom') {
