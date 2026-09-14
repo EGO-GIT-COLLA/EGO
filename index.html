@@ -4008,8 +4008,7 @@ function renderGlobalResults() {
                 if (!isNaN(areaNum) && areaNum > 0) subParts.push(areaNum.toLocaleString('zh-CN') + '㎡');
                 const ror = rateOfReturnPct(p);
                 if (!isNaN(ror)) subParts.push('回报率 ' + ror.toFixed(2) + '%');
-                const tags = (p.tags || []).slice(0, 5).map(t => `#${t}`).join(' ');
-                if (tags) subParts.push(tags);
+                // 搜索结果卡片不再显示标签（用户已用标签筛选，避免冗余；弹窗详情里仍可查看）
                 const sub = subParts.join(' · ');
                 return `<div class="gr-item" onclick="gsPreview('property','${p.id}')">
                     <span><strong>${escapeHTML(p.title)}</strong>${p.phone ? ' · 📞 ' + escapeHTML(p.phone) : ''}</span>
