@@ -5927,7 +5927,11 @@ function calcLoan(silent) {
     const policyWarn = (loanRatio < minRatio)
         ? `<div style="padding:6px 10px;margin-bottom:8px;background:rgba(212,175,55,0.15);border-radius:8px;font-size:12.5px;color:#d4af37;">⚠️ 当前首付${loanRatio}%低于${loanType === 'commercial' ? '商贷' : '公积金/组合贷'}政策最低${minRatio}%，实际审批可能被拒或需提高首付</div>`
         : '';
-    let html = policyWarn + `
+    const fundMaxWan = getFundMaxAmount();
+    const fundOverWarn = (fundLoan > 0 && fundLoan / 10000 > fundMaxWan)
+        ? `<div style="padding:6px 10px;margin-bottom:8px;background:rgba(212,175,55,0.15);border-radius:8px;font-size:12.5px;color:#d4af37;">⚠️ 公积金贷款${(fundLoan / 10000).toFixed(2)}万超过当前最高可贷${fundMaxWan}万（据2026广州新政），超出部分需转商贷或调整</div>`
+        : '';
+    let html = policyWarn + fundOverWarn + `
         <div style="display:flex;justify-content:space-between;border-bottom:1px dashed var(--chip-border);padding:4px 0;">
             <span>房产总价</span><span style="font-weight:600;">${totalWan.toFixed(2)} 万元</span>
         </div>
