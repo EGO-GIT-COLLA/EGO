@@ -7990,7 +7990,15 @@ async function ghLatestCommit(path) {
 }
 /* ---- 密码工具（Web Crypto：PBKDF2 派生 + AES-GCM 加密客源）---- */
 function _b64ToBytes(b64) { return Uint8Array.from(atob(b64), c => c.charCodeAt(0)); }
-function _bytesToB64(u8) { return btoa(String.fromCharCode.apply(null, u8)); }
+function _bytesToB64(u8) {
+    // 分块编码，避免大数组 apply 传参导致栈溢出（4MB+ 数据）
+    let s = '';
+    const CHUNK = 0x8000;
+    for (let i = 0; i < u8.length; i += CHUNK) {
+        s += String.fromCharCode.apply(null, u8.subarray(i, i + CHUNK));
+    }
+    return btoa(s);
+}
 async function _pwSalt() { return _bytesToB64(crypto.getRandomValues(new Uint8Array(16))); }
 async function _pwHash(password, saltB64, iter) {
     const enc = new TextEncoder();
