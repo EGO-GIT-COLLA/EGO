@@ -8633,7 +8633,7 @@ async function authDoSignin() {
         }
         // 派生加密密钥（用于加解密客源），不保存明文密码
         await _storeCryptoKey(password, f.salt, iter);
-        // 解密云端客源写入本地
+        // 解密云端客源写入本地（数据保护：云端为空但本地有数据时保留本地并上传，绝不静默清空本地）
         let customers = [];
         try {
             const key = await _loadCryptoKey();
@@ -8643,6 +8643,17 @@ async function authDoSignin() {
                 if (obj && Array.isArray(obj.customers)) customers = obj.customers;
             }
         } catch (e) { console.warn('[auth] 客源解密失败：', e.message); }
+        const localCus = (loadCustomers && loadCustomers()) || [];
+        if (customers.length) {
+            // 云端与本地按 id 合并（不丢任何一边）
+            const map = {};
+            (localCus || []).forEach(c => { if (c && (c.id || c._id)) map[c.id || c._id] = c; });
+            customers.forEach(c => { if (c && (c.id || c._id)) map[c.id || c._id] = c; });
+            customers = Object.values(map);
+        } else if (localCus && localCus.length) {
+            // 云端还没有客源：保留本地并随后上传（首次迁移场景）
+            customers = localCus;
+        }
         localStorage.setItem(CUS_STORAGE, JSON.stringify(customers));
         authSaveSession({ gh: true, user: { id: _emailFileKey(email), email, avatar: f.avatar || '', phone: f.phone || '', nickname: f.nickname || '', role: f.role || 'user' } });
         localStorage.setItem(AUTH_ROLE_KEY, f.role || 'user');
