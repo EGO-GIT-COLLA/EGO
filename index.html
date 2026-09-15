@@ -7916,12 +7916,26 @@ async function ghApi(method, path, body) {
 }
 async function ghReadFile(path) {
     try {
-        const j = await ghApi('GET', 'repos/' + ghRepoFull() + '/contents/' + path);
-        if (!j || !j.content) return null;
-        let txt;
-        try { txt = decodeURIComponent(escape(atob(j.content.replace(/\n/g, '')))); }
-        catch (e) { txt = atob(j.content.replace(/\n/g, '')); }
-        return { data: JSON.parse(txt), sha: j.sha };
+        const cfg = ghLoadConfig();
+        if (!cfg) return null;
+        // 大文件（>1MB）时 contents API 的 content 字段为空，必须用 raw Accept 直接取内容
+        const res = await fetch('https://api.github.com/repos/' + ghRepoFull() + '/contents/' + path, {
+            headers: { 'Authorization': 'token ' + cfg.token, 'Accept': 'application/vnd.github.raw', 'User-Agent': 'fangchan-helper' }
+        });
+        if (res.status === 404) return null;
+        if (!res.ok) {
+            const t = await res.text().catch(() => '');
+            throw new Error('GitHub HTTP ' + res.status + '：' + t.slice(0, 200));
+        }
+        const txt = await res.text();
+        const data = JSON.parse(txt);
+        // 拿当前 sha（供写入时用）
+        let sha = null;
+        try {
+            const meta = await ghApi('GET', 'repos/' + ghRepoFull() + '/contents/' + path);
+            sha = (meta && meta.sha) || null;
+        } catch (e) { sha = null; }
+        return { data: data, sha: sha };
     } catch (e) {
         if (String(e.message).includes('404')) return null;
         throw e;
