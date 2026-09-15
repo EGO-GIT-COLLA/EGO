@@ -7727,7 +7727,17 @@ const BACKUP_APP_KEY = 're_app_meta_v1';  // 应用元信息（主题等，可�
  * ======================================================= */
 const CLOUD_CONFIG_KEY = 're_cloud_config_v1';
 const CLOUD_LAST_SYNC_KEY = 're_last_cloud_sync_at';
+const CLOUD_LAST_HASH_KEY = 're_cloud_last_hash_v1';
 const AUTO_SYNC_KEY = 're_auto_sync_enabled';
+/* 轻量内容指纹：同一 payload 序列化结果相同 → 判定无变化，跳过同步省流量 */
+function _payloadHash(obj) {
+    try {
+        const s = JSON.stringify(obj);
+        let h = 0;
+        for (let i = 0; i < s.length; i++) { h = ((h << 5) - h + s.charCodeAt(i)) | 0; }
+        return 'h' + (h >>> 0).toString(36);
+    } catch (e) { return ''; }
+}
 let __autoSyncTimer = null;
 
 /* 自动同步开关 */
@@ -7781,7 +7791,7 @@ async function authOnAvatarBigFile(ev) {
     ev.target.value = '';
     if (!f) return;
     try {
-        const b64 = await compressImageToAvatar(f, 200, 0.8);
+        const b64 = await compressImageToAvatar(f, 128, 0.75);
         if (!b64) return;
         const img = document.getElementById('authAvatarBig');
         if (img) { img.src = b64; }
@@ -7921,6 +7931,16 @@ async function cloudSyncUpload() {
         const payload = cloudCollectPayload();
         // 客源按账号隔离：聚合桶只同步盘源+标签，客源一律不走聚合桶（防跨账号泄露）
         delete payload[CUS_STORAGE];
+        // ===== 省流量：内容指纹无变化则跳过整次同步（不下载、不上传）=====
+        try {
+            const lastHash = localStorage.getItem(CLOUD_LAST_HASH_KEY) || '';
+            const curHash = _payloadHash(payload);
+            const hasSynced = !!localStorage.getItem(CLOUD_LAST_SYNC_KEY);
+            if (lastHash && curHash && lastHash === curHash && hasSynced) {
+                __cloudSyncLastError = '';
+                return true;
+            }
+        } catch (e) {}
         // ===== 防数据丢失保护 =====
         // 1) 本地盘源+客源全空时，禁止上传（避免把云端数据清空）
         let _lp = [], _lc = [];
@@ -7981,6 +8001,7 @@ async function cloudSyncUpload() {
         });
         if (res.ok) {
             localStorage.setItem(CLOUD_LAST_SYNC_KEY, String(Date.now()));
+            try { localStorage.setItem(CLOUD_LAST_HASH_KEY, _payloadHash(payload)); } catch (e) {}
             __cloudSyncLastError = '';
             try { localStorage.removeItem('re_cloud_sync_err'); } catch (e) {}
             return true;
@@ -8228,7 +8249,7 @@ function compressImageToAvatar(file, maxPx, quality) {
             const img = new Image();
             img.onerror = () => reject(new Error('图片解码失败'));
             img.onload = () => {
-                const size = Number(maxPx) || 200;
+                const size = Number(maxPx) || 128;
                 const q = (quality == null) ? 0.8 : Number(quality);
                 const canvas = document.createElement('canvas');
                 canvas.width = size; canvas.height = size;
@@ -8496,7 +8517,7 @@ async function authOnAvatarFile(ev) {
     ev.target.value = '';
     if (!f) return;
     try {
-        const b64 = await compressImageToAvatar(f, 200, 0.8);
+        const b64 = await compressImageToAvatar(f, 128, 0.75);
         __authPendingAvatar = b64 || '';
         const img = document.getElementById('authAvatarPreview');
         const ph = document.getElementById('authAvatarPh');
@@ -9025,6 +9046,17 @@ async function cloudPullAndApplyIfNewer(force) {
     try {
         const cfg = cloudLoadConfig();
         if (!cfg || !cfg.url || !cfg.anonKey || !cfg.userKey) return;
+        // 省流量：第一步只查 updated_at（几十字节），云端确实比本地新才拉全量 payload
+        const head = await fetch(cfg.url + '/rest/v1/' + CLOUD_TABLE + '?user_key=eq.' + encodeURIComponent(cfg.userKey) + '&select=updated_at&limit=1', {
+            method: 'GET',
+            headers: { 'apikey': cfg.anonKey, 'Authorization': 'Bearer ' + cfg.anonKey }
+        }).then(r => r.ok ? r.json() : []).catch(() => []);
+        if (!Array.isArray(head) || head.length === 0) return;
+        if (!force) {
+            const cloudTs = head[0].updated_at ? new Date(head[0].updated_at).getTime() : 0;
+            const localTs = Number(localStorage.getItem(CLOUD_LAST_SYNC_KEY) || 0);
+            if (cloudTs && localTs && cloudTs <= localTs) return; // 本地已是最新
+        }
         const rows = await fetch(cfg.url + '/rest/v1/' + CLOUD_TABLE + '?user_key=eq.' + encodeURIComponent(cfg.userKey) + '&select=payload,updated_at&limit=1', {
             method: 'GET',
             headers: { 'apikey': cfg.anonKey, 'Authorization': 'Bearer ' + cfg.anonKey }
@@ -9032,12 +9064,6 @@ async function cloudPullAndApplyIfNewer(force) {
         if (!Array.isArray(rows) || rows.length === 0) return;
         const payload = rows[0].payload;
         if (!payload || (!payload[CUS_STORAGE] && !payload[PRO_STORAGE])) return;
-        // 云端比本地新才覆盖（按 updated_at 时间戳判断）；force=true 时跳过时间判断强制应用
-        if (!force) {
-            const cloudTs = rows[0].updated_at ? new Date(rows[0].updated_at).getTime() : 0;
-            const localTs = Number(localStorage.getItem(CLOUD_LAST_SYNC_KEY) || 0);
-            if (cloudTs && localTs && cloudTs <= localTs) return; // 本地已是最新
-        }
         // 盘源/标签随聚合桶同步；客源按账号隔离（登录态从业务表拉取，不走聚合桶）
         [PRO_STORAGE, PRO_TAG_STORAGE].forEach(k => {
             if (payload[k] != null) {
