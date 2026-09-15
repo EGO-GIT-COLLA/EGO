@@ -8139,8 +8139,11 @@ async function cloudSyncUpload() {
         return false;
     } catch (e) {
         console.warn('[ghSync] 上传异常', e && e.message);
-        __cloudSyncLastError = (e && e.message) ? ('同步异常：' + e.message) : '同步异常';
-        try { localStorage.setItem('re_cloud_sync_err', JSON.stringify({ ts: Date.now(), msg: __cloudSyncLastError })); } catch (e) {}
+        // 防御：仅配置仍有效时记录错误，避免"配置缺失/中途失效"误报同步失败
+        if (ghLoadConfig()) {
+            __cloudSyncLastError = (e && e.message) ? ('同步异常：' + e.message) : '同步异常';
+            try { localStorage.setItem('re_cloud_sync_err', JSON.stringify({ ts: Date.now(), msg: __cloudSyncLastError })); } catch (e2) {}
+        }
         return false;
     } finally {
         __cloudSyncInFlight = false;
