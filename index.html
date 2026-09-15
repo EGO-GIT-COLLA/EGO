@@ -2550,7 +2550,7 @@
 
                 <!-- 未登录 -->
                 <div id="authLoggedOut">
-                    <p class="backup-desc" style="font-size:12px;margin:4px 0;">登录后云端数据自动绑定账号，换设备登录同一账号即恢复。盘源全员共享，客源仅自己可见。</p>
+                    <p class="backup-desc" style="font-size:12px;margin:4px 0;">登录后房源/客源/标签均绑定账号并加密备份到 GitHub，换设备登录同一账号即全部恢复；未登录不显示云端数据。</p>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
                         <div>
                             <label style="font-size:12px;color:var(--text-hint);">邮箱</label>
@@ -2620,7 +2620,7 @@
                             </span>
                         </div>
                         <div class="row"><span class="k">最后同步</span><span class="v" id="lastSyncTime" style="font-size:11px;">从未同步</span></div>
-                        <div class="row"><span class="k">说明</span><span class="v" style="font-size:11px;color:var(--text-hint);">登录后客源按账号隔离，盘源全员共享</span></div>
+                        <div class="row"><span class="k">说明</span><span class="v" style="font-size:11px;color:var(--text-hint);">房源/客源/标签均按账号隔离备份，未登录仅可本地使用</span></div>
                     </div>
                 </div>
             </div>
@@ -8057,23 +8057,17 @@ async function cloudSyncUpload() {
     }
     const cfg = ghLoadConfig();
     if (!cfg) return false;
+    // 账号模式：未登录不上传云端（数据绑定账号）
+    const session = authGetSession();
+    if (!session || !session.user || !session.user.email) return true;
     __cloudSyncInFlight = true;
     try {
-        const payload = cloudCollectPayload();
-        // 客源按账号隔离：public.json 只同步盘源+标签，客源加密进 users/<key>.json
-        delete payload[CUS_STORAGE];
-        // 组装公共数据
-        let meta = null;
-        try { meta = JSON.parse(payload[BACKUP_APP_KEY] || 'null'); } catch (e) { meta = null; }
-        let props = [];
-        try { props = JSON.parse(payload[PRO_STORAGE] || '[]'); } catch (e) { props = []; }
-        let tags = [];
-        try { tags = JSON.parse(payload[PRO_TAG_STORAGE] || '[]'); } catch (e) { tags = []; }
-        const pubData = { meta: meta, properties: props, tags: tags, updated_at: new Date().toISOString() };
-        const session = authGetSession();
-        // ===== 省流量：内容指纹无变化则跳过整次同步（不下载、不上传）=====
+        const props = loadProperties() || [];
+        const cus = loadCustomers() || [];
+        const tags = loadProTags() || [];
+        // ===== 省流量：内容指纹无变化则跳过 =====
         try {
-            const hashSrc = JSON.stringify(pubData) + (session && session.user ? '|' + session.user.email : '');
+            const hashSrc = JSON.stringify({ props: props, cus: cus, tags: tags }) + '|' + session.user.email;
             const lastHash = localStorage.getItem(CLOUD_LAST_HASH_KEY) || '';
             const curHash = _payloadHash(hashSrc);
             const hasSynced = !!localStorage.getItem(CLOUD_LAST_SYNC_KEY);
@@ -8082,78 +8076,39 @@ async function cloudSyncUpload() {
                 return true;
             }
         } catch (e) {}
-        // ===== 防数据丢失保护 =====
-        let _lp = [], _lc = [];
-        try { _lp = loadProperties(); } catch (e) {}
-        try { _lc = loadCustomers(); } catch (e) {}
-        if ((!_lp || !_lp.length) && (!_lc || !_lc.length)) {
+        // ===== 防数据丢失保护：三项全空不上传 =====
+        if ((!props || !props.length) && (!cus || !cus.length) && (!tags || !tags.length)) {
             __cloudSyncLastError = '';
             return false;
         }
-        // 合并保护：读云端 public.json，本地盘源空则保留云端，标签以云端为主只补被使用的
-        let cloudPub = null;
-        try { cloudPub = await ghReadFile('public.json'); } catch (e) { cloudPub = null; }
-        if (cloudPub && cloudPub.data) {
-            if ((!_lp || !_lp.length) && Array.isArray(cloudPub.data.properties) && cloudPub.data.properties.length > 0) {
-                pubData.properties = cloudPub.data.properties;
-            }
-            if (Array.isArray(cloudPub.data.tags)) {
-                try {
-                    const cloudTags = cloudPub.data.tags.slice();
-                    const used = new Set();
-                    props.forEach(p => { (p.tags || []).forEach(t => used.add(t)); });
-                    (Array.isArray(tags) ? tags : []).forEach(t => {
-                        if (t && cloudTags.indexOf(t) < 0 && used.has(t)) cloudTags.push(t);
-                    });
-                    pubData.tags = cloudTags;
-                } catch (e) {}
-            }
-        }
-        // 上传 public.json
-        const pubOk = await ghWriteFile('public.json', pubData, cloudPub ? cloudPub.sha : undefined);
-        // 客源：登录态下加密写自己的 user 文件
-        let cusOk = true;
-        if (session && session.user && session.user.email) {
+        const rec = await ghReadFile(_userFilePath(session.user.email));
+        if (!rec || !rec.data) { __cloudSyncLastError = '账号文件读取失败'; return false; }
+        const key = await _loadCryptoKey();
+        if (!key) { __cloudSyncLastError = '加密密钥不可用，请重新登录'; return false; }
+        const f = rec.data;
+        // 防误覆盖保护：云端已有而本地为空时保留云端对应部分
+        let cloud = { customers: [], properties: [], tags: [] };
+        if (f.data && f.data.iv && f.data.ct) {
             try {
-                const cus = loadCustomers() || [];
-                const rec = await ghReadFile(_userFilePath(session.user.email));
-                if (rec && rec.data) {
-                    const key = await _loadCryptoKey();
-                    if (key) {
-                        const f = rec.data;
-                        // 防误覆盖保护：云端已有客源而本地为空时跳过客源上传
-                        //（避免新浏览器登录合并失败时用空客源清空云端）
-                        let cloudCusCount = 0;
-                        if (f.data && f.data.iv) {
-                            try {
-                                const plain2 = await _ghDecrypt(f.data, key);
-                                const obj2 = JSON.parse(plain2);
-                                if (obj2 && Array.isArray(obj2.customers)) cloudCusCount = obj2.customers.length;
-                            } catch (e) {}
-                        }
-                        if (cus.length || !cloudCusCount) {
-                            f.data = await _ghEncrypt(JSON.stringify({ customers: cus }), key);
-                            await ghWriteFile(_userFilePath(session.user.email), f, rec.sha);
-                        } else {
-                            console.warn('[ghSync] 云端已有客源但本地为空，跳过客源上传（防误覆盖）');
-                        }
-                    }
-                }
-            } catch (e) { cusOk = false; console.warn('[ghSync] 客源上传失败：', e && e.message); }
-        }
-        if (pubOk || !session) {
-            localStorage.setItem(CLOUD_LAST_SYNC_KEY, String(Date.now()));
-            try {
-                const hashSrc2 = JSON.stringify(pubData) + (session && session.user ? '|' + session.user.email : '');
-                localStorage.setItem(CLOUD_LAST_HASH_KEY, _payloadHash(hashSrc2));
+                const obj = JSON.parse(await _ghDecrypt(f.data, key));
+                if (obj && typeof obj === 'object') cloud = obj;
             } catch (e) {}
-            __cloudSyncLastError = '';
-            try { localStorage.removeItem('re_cloud_sync_err'); } catch (e) {}
-            return true;
         }
-        __cloudSyncLastError = 'GitHub 写入失败';
-        try { localStorage.setItem('re_cloud_sync_err', JSON.stringify({ ts: Date.now(), msg: __cloudSyncLastError })); } catch (e) {}
-        return false;
+        const payload = {
+            customers: (cus && cus.length) ? cus : (cloud.customers || []),
+            properties: (props && props.length) ? props : (cloud.properties || []),
+            tags: (tags && tags.length) ? tags : (cloud.tags || [])
+        };
+        f.data = await _ghEncrypt(JSON.stringify(payload), key);
+        await ghWriteFile(_userFilePath(session.user.email), f, rec.sha);
+        localStorage.setItem(CLOUD_LAST_SYNC_KEY, String(Date.now()));
+        try {
+            const hashSrc2 = JSON.stringify({ props: payload.properties, cus: payload.customers, tags: payload.tags }) + '|' + session.user.email;
+            localStorage.setItem(CLOUD_LAST_HASH_KEY, _payloadHash(hashSrc2));
+        } catch (e) {}
+        __cloudSyncLastError = '';
+        try { localStorage.removeItem('re_cloud_sync_err'); } catch (e) {}
+        return true;
     } catch (e) {
         console.warn('[ghSync] 上传异常', e && e.message);
         // 防御：仅配置仍有效时记录错误，避免"配置缺失/中途失效"误报同步失败
@@ -8188,6 +8143,11 @@ async function cloudSyncNow() {
         toast('⚠️ 云备份配置缺失');
         return;
     }
+    if (!authGetSession()) {
+        if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 请先登录账号，数据按账号同步。'; }
+        toast('⚠️ 请先登录账号');
+        return;
+    }
     toast('⏳ 正在上传到 GitHub...');
     // 等待进行中的同步完成（最多 30 秒），避免并发冲突误报
     let waited = 0;
@@ -8211,6 +8171,10 @@ async function cloudSyncNow() {
 async function cloudRestore() {
     const cfg = ghLoadConfig();
     const hint = document.getElementById('sbHint');
+    if (!authGetSession()) {
+        if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 请先登录账号，再从云端恢复。'; }
+        toast('⚠️ 请先登录账号'); return;
+    }
     if (!cfg) {
         if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 请先填写并保存 GitHub 配置。'; }
         toast('⚠️ 未配置云备份');
@@ -8218,30 +8182,44 @@ async function cloudRestore() {
     }
     toast('⏳ 正在从 GitHub 拉取...');
     try {
-        const rec = await ghReadFile('public.json');
-        if (!rec || !rec.data || (!Array.isArray(rec.data.properties) && !Array.isArray(rec.data.tags))) {
-            if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ GitHub 仓库中还没有备份数据。请先在有数据的设备上点「立即同步」。'; }
+        const session = authGetSession();
+        const rec = await ghReadFile(_userFilePath(session.user.email));
+        if (!rec || !rec.data) {
+            if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 该账号还没有云端备份数据。请先在有数据的设备上登录并点「立即同步」。'; }
             toast('⚠️ 云端无备份');
             return;
         }
-        const pub = rec.data;
-        customConfirm('从云端恢复将覆盖当前所有客源/盘源/标签数据，确定继续吗？', () => {
+        const key = await _loadCryptoKey();
+        if (!key) {
+            if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 加密密钥不可用，请退出后重新登录。'; }
+            toast('⚠️ 密钥不可用'); return;
+        }
+        let obj = { customers: [], properties: [], tags: [] };
+        if (rec.data.data && rec.data.data.iv && rec.data.data.ct) {
             try {
-                if (Array.isArray(pub.properties)) localStorage.setItem(PRO_STORAGE, JSON.stringify(pub.properties.map(normalizeProperty)));
-                if (Array.isArray(pub.tags)) localStorage.setItem(PRO_TAG_STORAGE, JSON.stringify(pub.tags));
-                if (pub.meta != null) localStorage.setItem(BACKUP_APP_KEY, JSON.stringify(pub.meta));
-                const session = authGetSession();
-                if (session && session.user && session.user.email) {
-                    cloudPullMyCustomers().then(() => {
-                        renderCusTagChips(); renderCustomerList(); resetCustomerForm();
-                    }).catch(() => {});
-                }
+                const parsed = JSON.parse(await _ghDecrypt(rec.data.data, key));
+                if (parsed && typeof parsed === 'object') obj = parsed;
+            } catch (e) { console.warn('[restore] 解密失败：', e.message); }
+        }
+        const pros = Array.isArray(obj.properties) ? obj.properties : [];
+        const cuss = Array.isArray(obj.customers) ? obj.customers : [];
+        const tagss = Array.isArray(obj.tags) ? obj.tags : [];
+        if (!pros.length && !cuss.length && !tagss.length) {
+            if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 该账号云端还没有数据。请先在有数据的设备上登录并点「立即同步」。'; }
+            toast('⚠️ 云端无备份');
+            return;
+        }
+        customConfirm('从云端恢复将覆盖当前所有房源/客源/标签数据，确定继续吗？', () => {
+            try {
+                if (pros.length) localStorage.setItem(PRO_STORAGE, JSON.stringify(pros.map(normalizeProperty)));
+                if (tagss.length) localStorage.setItem(PRO_TAG_STORAGE, JSON.stringify(tagss));
+                if (cuss.length) localStorage.setItem(CUS_STORAGE, JSON.stringify(cuss));
                 renderCusTagChips(); renderProTagChips();
                 renderCustomerList(); renderPropertyList();
                 renderProPriceFilter(); renderProTypeFilter(); renderProTagFilter();
                 renderSelectedFilterBar(); renderBackupStat();
                 resetCustomerForm(); resetPropertyForm();
-                if (hint) { hint.style.display = 'block'; hint.textContent = '✅ 已从 GitHub 恢复（备份时间：' + (pub.updated_at || '未知') + '）。'; }
+                if (hint) { hint.style.display = 'block'; hint.textContent = '✅ 已从 GitHub 恢复本账号数据（房源 ' + pros.length + ' / 客源 ' + cuss.length + '）。'; }
                 toast('✅ 已从云端恢复');
             } catch (e) {
                 if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 恢复异常：' + (e && e.message); }
@@ -8424,25 +8402,35 @@ async function cloudPullMyCustomers() {
         const rec = await ghReadFile(_userFilePath(session.user.email));
         if (!rec || !rec.data) return;
         const f = rec.data;
-        let customers = [];
+        let obj = { customers: [], properties: [], tags: [] };
         if (f.data && f.data.iv && f.data.ct) {
             const key = await _loadCryptoKey();
             if (key) {
                 try {
                     const plain = await _ghDecrypt(f.data, key);
-                    const obj = JSON.parse(plain);
-                    if (obj && Array.isArray(obj.customers)) customers = obj.customers;
-                } catch (e) { console.warn('[ghSync] 客源解密失败：', e && e.message); }
+                    const parsed = JSON.parse(plain);
+                    if (parsed && typeof parsed === 'object') obj = parsed;
+                } catch (e) { console.warn('[ghSync] 账号数据解密失败：', e && e.message); }
             }
         }
+        const customers = Array.isArray(obj.customers) ? obj.customers : [];
+        const properties = Array.isArray(obj.properties) ? obj.properties : [];
+        const tags = Array.isArray(obj.tags) ? obj.tags : [];
         if (customers.length) {
             localStorage.setItem(CUS_STORAGE, JSON.stringify(customers));
             try { localStorage.setItem(CLOUD_CUS_CACHE, JSON.stringify({ ts: Date.now(), items: customers.length, cloudCnt: customers.length })); } catch (e) {}
         }
+        if (properties.length) localStorage.setItem(PRO_STORAGE, JSON.stringify(properties.map(normalizeProperty)));
+        if (tags.length) localStorage.setItem(PRO_TAG_STORAGE, JSON.stringify(tags));
         try { renderCustomerList && renderCustomerList(); } catch (e) {}
         try { renderCusTagChips && renderCusTagChips(); } catch (e) {}
-        console.log('[ghSync] 已同步本账号客源 ' + customers.length + ' 条');
-    } catch (e) { console.warn('[ghSync] 拉取本账号客源失败：', e.message); }
+        try { renderPropertyList && renderPropertyList(); } catch (e) {}
+        try { renderProTagChips && renderProTagChips(); } catch (e) {}
+        try { renderProTagFilter && renderProTagFilter(); } catch (e) {}
+        try { renderProPriceFilter && renderProPriceFilter(); } catch (e) {}
+        try { renderProTypeFilter && renderProTypeFilter(); } catch (e) {}
+        console.log('[ghSync] 已同步本账号数据：客源 ' + customers.length + ' / 房源 ' + properties.length + ' / 标签 ' + tags.length);
+    } catch (e) { console.warn('[ghSync] 拉取本账号数据失败：', e.message); }
 }
 
 /** 登录态：把本地客源批量上传到业务表（归属本账号） */
@@ -8452,14 +8440,29 @@ async function cloudPushMyCustomers() {
     if (!session || !session.user || !session.user.email) return;
     try {
         const cus = loadCustomers() || [];
+        const props = loadProperties() || [];
+        const tags = loadProTags() || [];
         const rec = await ghReadFile(_userFilePath(session.user.email));
         if (!rec || !rec.data) return;
         const key = await _loadCryptoKey();
         if (!key) return;
         const f = rec.data;
-        f.data = await _ghEncrypt(JSON.stringify({ customers: cus }), key);
+        // 防误覆盖保护：云端已有而本地为空时保留云端对应部分
+        let cloud = { customers: [], properties: [], tags: [] };
+        if (f.data && f.data.iv && f.data.ct) {
+            try {
+                const obj = JSON.parse(await _ghDecrypt(f.data, key));
+                if (obj && typeof obj === 'object') cloud = obj;
+            } catch (e) {}
+        }
+        const payload = {
+            customers: (cus && cus.length) ? cus : (cloud.customers || []),
+            properties: (props && props.length) ? props : (cloud.properties || []),
+            tags: (tags && tags.length) ? tags : (cloud.tags || [])
+        };
+        f.data = await _ghEncrypt(JSON.stringify(payload), key);
         await ghWriteFile(_userFilePath(session.user.email), f, rec.sha);
-    } catch (e) { console.warn('[ghSync] 上传客源失败：', e.message); }
+    } catch (e) { console.warn('[ghSync] 上传账号数据失败：', e.message); }
 }
 
 /** 从隔离云端表删除一个客源（RLS 会校验 owner_id） */
@@ -8473,24 +8476,16 @@ async function cloudDeleteCustomer(id) {
 /** 从 GitHub 拉取盘源 + 本账号客源，覆盖合并到本地 */
 async function cloudRefreshAllMerge(notify) {
     try {
-        const rec = await ghReadFile('public.json');
-        let cloudProCnt = 0, cloudCusCnt = 0;
-        if (rec && rec.data) {
-            const pub = rec.data;
-            if (Array.isArray(pub.properties)) {
-                const arr = pub.properties.map(normalizeProperty);
-                localStorage.setItem(PRO_STORAGE, JSON.stringify(arr));
-                cloudProCnt = arr.length;
-                try { localStorage.setItem(CLOUD_PRO_CACHE, JSON.stringify({ ts: Date.now(), items: cloudProCnt, cloudCnt: cloudProCnt })); } catch (e) {}
-            }
-            if (Array.isArray(pub.tags)) localStorage.setItem(PRO_TAG_STORAGE, JSON.stringify(pub.tags));
-            if (pub.meta != null) localStorage.setItem(BACKUP_APP_KEY, JSON.stringify(pub.meta));
-            localStorage.setItem(CLOUD_LAST_SYNC_KEY, String(Date.now()));
+        const session = authGetSession();
+        if (!session || !session.user || !session.user.email) {
+            if (notify) toast('⚠️ 请先登录账号，数据按账号拉取');
+            return null;
         }
-        if (authGetSession()) {
-            await cloudPullMyCustomers();
-            cloudCusCnt = (loadCustomers() || []).length;
-        }
+        await cloudPullMyCustomers();
+        const pros = loadProperties() || [];
+        const cuss = loadCustomers() || [];
+        localStorage.setItem(CLOUD_LAST_SYNC_KEY, String(Date.now()));
+        try { localStorage.setItem(CLOUD_PRO_CACHE, JSON.stringify({ ts: Date.now(), items: pros.length, cloudCnt: pros.length })); } catch (e) {}
         try {
             renderCustomerList && renderCustomerList();
             renderPropertyList && renderPropertyList();
@@ -8502,8 +8497,8 @@ async function cloudRefreshAllMerge(notify) {
             renderCusTagChips && renderCusTagChips();
             renderProTagChips && renderProTagChips();
         } catch (e) {}
-        if (notify) toast('☁️ 已从 GitHub 同步（盘源' + cloudProCnt + '/客源' + cloudCusCnt + '）');
-        return { cloudProCnt, cloudCusCnt };
+        if (notify) toast('☁️ 已从 GitHub 同步（房源' + pros.length + '/客源' + cuss.length + '）');
+        return { cloudProCnt: pros.length, cloudCusCnt: cuss.length };
     } catch (e) {
         console.warn('[ghRefresh] 失败：', e && e.message);
         return null;
@@ -8618,7 +8613,7 @@ async function authDoSignup() {
         const iter = GH_ITER;
         const ph = await _pwHash(password, salt, iter);
         const key = await _pwKey(password, salt, iter, 'encrypt');
-        const enc = await _ghEncrypt(JSON.stringify({ customers: [] }), key);
+        const enc = await _ghEncrypt(JSON.stringify({ customers: [], properties: [], tags: [] }), key);
         const file = { v: 1, salt, iter, ph, role: 'user', nickname, avatar: __authPendingAvatar || '', phone, data: enc };
         await ghWriteFile(path, file, null);
         // 自动登录
@@ -8668,28 +8663,53 @@ async function authDoSignin() {
         }
         // 派生加密密钥（用于加解密客源），不保存明文密码
         await _storeCryptoKey(password, f.salt, iter);
-        // 解密云端客源写入本地（数据保护：云端为空但本地有数据时保留本地并上传，绝不静默清空本地）
-        let customers = [];
+        // 解密云端账号数据写入本地（数据保护：云端为空但本地有数据时保留本地并上传，绝不静默清空本地）
+        let cloudObj = { customers: [], properties: [], tags: [] };
         try {
             const key = await _loadCryptoKey();
             if (key && f.data && f.data.iv) {
                 const plain = await _ghDecrypt(f.data, key);
                 const obj = JSON.parse(plain);
-                if (obj && Array.isArray(obj.customers)) customers = obj.customers;
+                if (obj && typeof obj === 'object') cloudObj = obj;
             }
-        } catch (e) { console.warn('[auth] 客源解密失败：', e.message); }
+        } catch (e) { console.warn('[auth] 账号数据解密失败：', e.message); }
+        const cloudCus = Array.isArray(cloudObj.customers) ? cloudObj.customers : [];
+        const cloudProps = Array.isArray(cloudObj.properties) ? cloudObj.properties : [];
+        const cloudTags = Array.isArray(cloudObj.tags) ? cloudObj.tags : [];
         const localCus = (loadCustomers && loadCustomers()) || [];
-        if (customers.length) {
-            // 云端与本地按 id 合并（不丢任何一边）
+        const localProps = (loadProperties && loadProperties()) || [];
+        const localTags = (loadProTags && loadProTags()) || [];
+        // 客源合并（云端与本地按 id 合并，不丢任何一边）
+        let customers = cloudCus;
+        if (cloudCus.length) {
             const map = {};
             (localCus || []).forEach(c => { if (c && (c.id || c._id)) map[c.id || c._id] = c; });
-            customers.forEach(c => { if (c && (c.id || c._id)) map[c.id || c._id] = c; });
+            cloudCus.forEach(c => { if (c && (c.id || c._id)) map[c.id || c._id] = c; });
             customers = Object.values(map);
         } else if (localCus && localCus.length) {
-            // 云端还没有客源：保留本地并随后上传（首次迁移场景）
             customers = localCus;
         }
+        // 房源合并（按 id）
+        let properties = cloudProps;
+        if (cloudProps.length) {
+            const pmap = {};
+            (localProps || []).forEach(p => { if (p && (p.id || p._id)) pmap[p.id || p._id] = p; });
+            cloudProps.forEach(p => { if (p && (p.id || p._id)) pmap[p.id || p._id] = p; });
+            properties = Object.values(pmap);
+        } else if (localProps && localProps.length) {
+            properties = localProps;
+        }
+        // 标签合并（去重）
+        let tags = cloudTags;
+        if (cloudTags.length || localTags.length) {
+            const tset = [];
+            (cloudTags || []).forEach(t => { if (t && tset.indexOf(t) < 0) tset.push(t); });
+            (localTags || []).forEach(t => { if (t && tset.indexOf(t) < 0) tset.push(t); });
+            tags = tset;
+        }
         localStorage.setItem(CUS_STORAGE, JSON.stringify(customers));
+        localStorage.setItem(PRO_STORAGE, JSON.stringify(properties.map(function (p) { try { return normalizeProperty(p); } catch (e) { return p; } })));
+        localStorage.setItem(PRO_TAG_STORAGE, JSON.stringify(tags));
         authSaveSession({ gh: true, user: { id: _emailFileKey(email), email, avatar: f.avatar || '', phone: f.phone || '', nickname: f.nickname || '', role: f.role || 'user' } });
         localStorage.setItem(AUTH_ROLE_KEY, f.role || 'user');
         __authPendingAvatar = '';
@@ -9027,27 +9047,17 @@ async function cloudPullAndApplyIfNewer(force) {
     try {
         const cfg = ghLoadConfig();
         if (!cfg) return;
-        // 第一步：轻量查 public.json 最新 commit（几十字节），内容有更新才拉全量
-        const head = await ghLatestCommit('public.json');
-        if (!head) return;
+        // 账号模式：未登录不拉取云端数据
+        const session = authGetSession();
+        if (!session || !session.user || !session.user.email) return;
         const localTs = Number(localStorage.getItem(CLOUD_LAST_SYNC_KEY) || 0);
         if (!force) {
-            const cloudTs = head.date ? new Date(head.date).getTime() : 0;
+            const cloudTs = Number(localStorage.getItem(CLOUD_LAST_SYNC_KEY) || 0);
             if (cloudTs && localTs && cloudTs <= localTs) return; // 本地已是最新
         }
-        // 第二步：确实有更新才拉全量
-        const rec = await ghReadFile('public.json');
-        if (!rec || !rec.data) return;
-        const pub = rec.data;
-        if (Array.isArray(pub.properties)) {
-            localStorage.setItem(PRO_STORAGE, JSON.stringify(pub.properties.map(normalizeProperty)));
-        }
-        if (Array.isArray(pub.tags)) localStorage.setItem(PRO_TAG_STORAGE, JSON.stringify(pub.tags));
-        if (pub.meta != null) localStorage.setItem(BACKUP_APP_KEY, JSON.stringify(pub.meta));
+        // 从本账号用户文件拉全量（房源 + 客源 + 标签）
+        await cloudPullMyCustomers();
         localStorage.setItem(CLOUD_LAST_SYNC_KEY, String(Date.now()));
-        // 登录态：从 GitHub 拉本账号客源
-        const session = authGetSession();
-        if (session && session.user && session.user.email) { await cloudPullMyCustomers(); }
         updateAutoSyncUI && updateAutoSyncUI();
         renderCusTagChips && renderCusTagChips();
         renderProTagChips && renderProTagChips();
@@ -9114,10 +9124,11 @@ updateAuthUI();
         const t = document.getElementById('ghToken');
         if (o && o.value && r && r.value && t && t.value && !ghLoadConfig()) ghSaveConfig();
     } catch (e) {}
-    // 打开页面自动同步（无需登录）：
+    // 打开页面自动同步（账号模式：需已登录）：
     //   1) 本地有数据才先上传（防丢本地新数据，同时避免空数据覆盖云端）
     //   2) 无论是否有本地数据，都强制从云端拉取覆盖，保证多设备打开即实时一致
-    if (isAutoSyncEnabled() && ghLoadConfig()) {
+    const __session = (typeof authGetSession === 'function') ? authGetSession() : null;
+    if (isAutoSyncEnabled() && ghLoadConfig() && __session) {
         (async () => {
             try {
                 let hasLocal = false;
