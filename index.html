@@ -2824,30 +2824,8 @@ function parsePropertyOcr(raw) {
     if (result.owner === '王') result.owner = '王姐';
     if (result.owner === '李') result.owner = '李姐';
     if (result.owner === '张') result.owner = '张姐';
-    result.tags = extractTagsFromText(text, {
-        customer: false,
-        want: ['学区', '地铁', '满五唯一', '精装', '毛坯', '电梯', '朝南', '南北通透', '带车位', '可谈价', '急售', '海景', '新房', '次新房', '投资',
-               '洋房', '商住楼', '地皮厂房', '商业体', '别墅', '商铺', '写字楼', '租盘', '售盘', '住宅', '公寓', '车位', '仓库']
-    });
-    // 物业类型自动识别：从 PRO_TYPE_TAGS 里匹配（商铺/别墅/写字楼/洋房/商业体/地皮厂房/商住楼）
-    (typeof PRO_TYPE_TAGS !== 'undefined' ? PRO_TYPE_TAGS : []).forEach(t => {
-        if (text.includes(t) && !result.tags.includes(t)) result.tags.push(t);
-    });
-    // 价格区间标签：根据识别到的总价自动归类（如 280万 → 200-500万）
-    if (result.price) {
-        const pn = Number(result.price);
-        if (!isNaN(pn) && pn > 0) {
-            const seg = (typeof PRO_PRICE_TAGS !== 'undefined' ? PRO_PRICE_TAGS : []).find(s => pn >= s.min && (s.max === Infinity ? true : pn < s.max));
-            if (seg && !result.tags.includes(seg.label)) result.tags.push(seg.label);
-        }
-    }
-    // 面积区间标签：不再自动生成（用户要求不新增无关标签）
-    // 租盘/售盘自动识别：有租金→租盘，有总价且无租金→售盘
-    const hasRent = (result.rentMonthly && Number(result.rentMonthly) > 0) || (result.rentYearly && Number(result.rentYearly) > 0);
-    const hasPrice = result.price && Number(result.price) > 0;
-    if (hasRent && !result.tags.includes('租盘')) result.tags.push('租盘');
-    if (hasPrice && !hasRent && !result.tags.includes('售盘')) result.tags.push('售盘');
-    // 回报率标签：不再自动生成（用户要求不新增无关标签）
+    // 标签：一律不自动生成（用户多次要求"不要自动新增标签"）——只填字段，标签由用户手动点击选择
+    result.tags = [];
     return result;
 }
 
@@ -6615,6 +6593,12 @@ const PRO_BUILTIN_TAGS = new Set([
     ...PRO_PRICE_TAGS.map(x => x.label),
     ...PRO_TYPE_TAGS
 ]);
+// 历史版本 OCR 自动生成的"机器标签"（回报率档/面积档/物业误识别词），一律不再展示、不再勾选、从数据中清洗
+const PRO_MACHINE_TAGS = new Set([
+    '高回报≥8%', '中回报5-8%', '低回报3-5%', '微回报<3%',
+    '0-50㎡', '50-100㎡', '100-200㎡', '200-500㎡', '500-1000㎡', '1000㎡以上',
+    '公寓', '住宅', '车位', '仓库'
+]);
 // 注意：之前 DEFAULT_PRO_TAGS 里的「学区/地铁/满五唯一/精装/毛坯...」等 15 个"默认自定义标签"，
 // 根据你现在的新要求（只保留价格+类型，以及你手动创建的自定义标签），不再自动注入。
 // 只有当用户历史数据（localStorage 盘源/标签池）里还有这些老标签时，会作为"你手动创建过的"予以保留。
@@ -6931,7 +6915,16 @@ function loadProperties() {
     try {
         const raw = JSON.parse(localStorage.getItem(PRO_STORAGE) || '[]');
         if (!Array.isArray(raw)) return [];
-        return raw.map(normalizeProperty);
+        let dirty = false;
+        const cleaned = raw.map(normalizeProperty).map(p => {
+            if (Array.isArray(p.tags) && p.tags.some(t => PRO_MACHINE_TAGS.has(t))) {
+                dirty = true;
+                p.tags = p.tags.filter(t => !PRO_MACHINE_TAGS.has(t));
+            }
+            return p;
+        });
+        if (dirty) { try { localStorage.setItem(PRO_STORAGE, JSON.stringify(cleaned)); } catch {} }
+        return cleaned;
     }
     catch { return []; }
 }
@@ -6959,6 +6952,7 @@ function loadProTags() {
             list.forEach(t => {
                 if (t == null || t === '') return;
                 const s = String(t);
+                if (PRO_MACHINE_TAGS.has(s)) return;   // 机器自动生成的残留标签，清洗掉
                 if (seen.has(s)) return;
                 seen.add(s);
                 result.push(s);
