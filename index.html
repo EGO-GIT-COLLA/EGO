@@ -8051,7 +8051,10 @@ function cloudCollectPayload() {
 // body 里带主键字段，URL 不带主键条件；冲突时以主键为准自动更新。
 let __cloudSyncLastError = '';
 async function cloudSyncUpload() {
-    if (__cloudSyncInFlight) return false;
+    if (__cloudSyncInFlight) {
+        __cloudSyncLastError = '上一次同步尚未完成，请稍候再试';
+        return false;
+    }
     const cfg = ghLoadConfig();
     if (!cfg) return false;
     __cloudSyncInFlight = true;
@@ -8172,6 +8175,12 @@ async function cloudSyncNow() {
         return;
     }
     toast('⏳ 正在上传到 GitHub...');
+    // 等待进行中的同步完成（最多 30 秒），避免并发冲突误报
+    let waited = 0;
+    while (typeof __cloudSyncInFlight === 'boolean' && __cloudSyncInFlight && waited < 30000) {
+        await new Promise(function (r) { setTimeout(r, 600); });
+        waited += 600;
+    }
     const ok = await cloudSyncUpload();
     if (ok) {
         if (hint) { hint.style.display = 'block'; hint.textContent = '✅ 已同步到 GitHub 私有仓库（' + cfg.owner + '/' + cfg.repo + '），下次有变更会自动更新。'; }
