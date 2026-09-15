@@ -9062,6 +9062,17 @@ updateAuthUI();
 
 (function autoCloudSyncOnLoad() {
     updateAutoSyncUI();
+    // ===== 迁移兼容：清理旧 Supabase 残留（配置与 402 等错误记录），避免误导 =====
+    try {
+        const seRaw = localStorage.getItem('re_cloud_sync_err');
+        if (seRaw) {
+            try {
+                const se = JSON.parse(seRaw);
+                if (se && /egress_quota|supabase|HTTP 4/i.test(se.msg || '')) localStorage.removeItem('re_cloud_sync_err');
+            } catch (e) { localStorage.removeItem('re_cloud_sync_err'); }
+        }
+        if (!ghLoadConfig() && localStorage.getItem(CLOUD_CONFIG_KEY)) localStorage.removeItem(CLOUD_CONFIG_KEY);
+    } catch (e) {}
     // 首次打开：输入框已预填仓库信息 → 若三项齐全自动保存，保证任何设备打开即同步
     try {
         const o = document.getElementById('ghOwner');
