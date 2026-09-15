@@ -7923,14 +7923,22 @@ async function ghApi(method, path, body) {
     }
     return res.status === 204 ? null : res.json();
 }
-async function ghReadFile(path) {
+async function ghReadFile(path, _attempt) {
     try {
         const cfg = ghLoadConfig();
         if (!cfg) return null;
+        _attempt = _attempt || 0;
         // 大文件（>1MB）时 contents API 的 content 字段为空，必须用 raw Accept 直接取内容
-        const res = await fetch('https://api.github.com/repos/' + ghRepoFull() + '/contents/' + path, {
-            headers: { 'Authorization': 'token ' + cfg.token, 'Accept': 'application/vnd.github.raw', 'User-Agent': 'fangchan-helper' }
-        });
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 60000); // 60s 超时，避免大文件下载挂起
+        let res;
+        try {
+            res = await fetch('https://api.github.com/repos/' + ghRepoFull() + '/contents/' + path, {
+                headers: { 'Authorization': 'token ' + cfg.token, 'Accept': 'application/vnd.github.raw', 'User-Agent': 'fangchan-helper', 'Cache-Control': 'no-cache' },
+                signal: ctrl.signal,
+                cache: 'no-store'
+            });
+        } finally { clearTimeout(timer); }
         if (res.status === 404) return null;
         if (!res.ok) {
             const t = await res.text().catch(() => '');
@@ -7944,6 +7952,10 @@ async function ghReadFile(path) {
         return { data: data, sha: sha };
     } catch (e) {
         if (String(e.message).includes('404')) return null;
+        if ((e.name === 'AbortError' || String(e.message).includes('Failed to fetch')) && _attempt < 2) {
+            await new Promise(r => setTimeout(r, 1200 * (_attempt + 1)));
+            return ghReadFile(path, _attempt + 1); // 网络抖动自动重试
+        }
         throw e;
     }
 }
@@ -8015,14 +8027,25 @@ async function _pwKey(password, saltB64, iter, use) {
         { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']
     );
 }
+async function _ghCompressText(str) {
+    const stream = new Blob([str]).stream().pipeThrough(new CompressionStream('gzip'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+async function _ghDecompressText(u8) {
+    const stream = new Blob([u8]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return new TextDecoder().decode(await new Response(stream).arrayBuffer());
+}
 async function _ghEncrypt(plain, key) {
     const iv = crypto.getRandomValues(new Uint8Array(12));
-    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(plain));
-    return { iv: _bytesToB64(iv), ct: _bytesToB64(new Uint8Array(ct)) };
+    const comp = await _ghCompressText(plain); // gzip 压缩，减小云端文件体积、加速同步
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, comp);
+    return { iv: _bytesToB64(iv), ct: _bytesToB64(new Uint8Array(ct)), compressed: true };
 }
 async function _ghDecrypt(payload, key) {
     const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: _b64ToBytes(payload.iv) }, key, _b64ToBytes(payload.ct));
-    return new TextDecoder().decode(pt);
+    const u8 = new Uint8Array(pt);
+    if (payload.compressed) return _ghDecompressText(u8); // 兼容旧数据（无 compressed 标志）
+    return new TextDecoder().decode(u8);
 }
 /* 登录成功后把派生密钥存 localStorage（不存明文密码） */
 async function _storeCryptoKey(password, saltB64, iter) {
@@ -8654,7 +8677,7 @@ async function authDoSignin() {
         if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 请先在备份页「高级配置」保存 GitHub 云配置。'; }
         toast('⚠️ 未配置 GitHub'); return;
     }
-    toast('⏳ 登录中…');
+    toast('⏳ 正在从云端下载数据，请稍候…');
     try {
         const path = _userFilePath(email);
         const rec = await ghReadFile(path);
