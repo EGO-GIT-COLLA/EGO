@@ -9046,10 +9046,18 @@ updateAuthUI();
 /* URL hash 自动配置：#gh=owner|repo|token 打开即自动配置 */
 (function autoConfigFromUrl() {
     try {
-        const hash = window.location.hash || '';
-        const m = hash.match(/gh=([^&]+)/);
-        if (!m) return;
-        const parts = decodeURIComponent(m[1]).split('|');
+        // 双保险：优先读 query（?gh=…），兼容微信等平台可能丢弃 hash 的情况；再读 hash（#gh=…）
+        let src = '';
+        const q = window.location.search || '';
+        const qm = q.match(/[?&]gh=([^&]+)/);
+        if (qm) src = qm[1];
+        if (!src) {
+            const hash = window.location.hash || '';
+            const hm = hash.match(/gh=([^&]+)/);
+            if (hm) src = hm[1];
+        }
+        if (!src) return;
+        const parts = decodeURIComponent(src).split('|');
         if (parts.length >= 2) {
             const o = document.getElementById('ghOwner');
             const r = document.getElementById('ghRepo');
