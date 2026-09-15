@@ -7987,7 +7987,7 @@ async function _pwKey(password, saltB64, iter, use) {
     return crypto.subtle.deriveKey(
         { name: 'PBKDF2', salt: _b64ToBytes(saltB64), iterations: iter, hash: 'SHA-256' },
         baseKey,
-        { name: 'AES-GCM', length: 256 }, false, [use]
+        { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']
     );
 }
 async function _ghEncrypt(plain, key) {
