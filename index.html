@@ -7934,7 +7934,7 @@ async function ghReadFile(path, _attempt) {
         let res;
         try {
             res = await fetch('https://api.github.com/repos/' + ghRepoFull() + '/contents/' + path, {
-                headers: { 'Authorization': 'token ' + cfg.token, 'Accept': 'application/vnd.github.raw', 'User-Agent': 'fangchan-helper', 'Cache-Control': 'no-cache' },
+                headers: { 'Authorization': 'token ' + cfg.token, 'Accept': 'application/vnd.github.raw', 'User-Agent': 'fangchan-helper' },
                 signal: ctrl.signal,
                 cache: 'no-store'
             });
