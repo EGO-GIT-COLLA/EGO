@@ -8121,8 +8121,22 @@ async function cloudSyncUpload() {
                     const key = await _loadCryptoKey();
                     if (key) {
                         const f = rec.data;
-                        f.data = await _ghEncrypt(JSON.stringify({ customers: cus }), key);
-                        await ghWriteFile(_userFilePath(session.user.email), f, rec.sha);
+                        // 防误覆盖保护：云端已有客源而本地为空时跳过客源上传
+                        //（避免新浏览器登录合并失败时用空客源清空云端）
+                        let cloudCusCount = 0;
+                        if (f.data && f.data.iv) {
+                            try {
+                                const plain2 = await _ghDecrypt(f.data, key);
+                                const obj2 = JSON.parse(plain2);
+                                if (obj2 && Array.isArray(obj2.customers)) cloudCusCount = obj2.customers.length;
+                            } catch (e) {}
+                        }
+                        if (cus.length || !cloudCusCount) {
+                            f.data = await _ghEncrypt(JSON.stringify({ customers: cus }), key);
+                            await ghWriteFile(_userFilePath(session.user.email), f, rec.sha);
+                        } else {
+                            console.warn('[ghSync] 云端已有客源但本地为空，跳过客源上传（防误覆盖）');
+                        }
                     }
                 }
             } catch (e) { cusOk = false; console.warn('[ghSync] 客源上传失败：', e && e.message); }
