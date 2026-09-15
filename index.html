@@ -9094,7 +9094,10 @@ async function cloudPullAndApplyIfNewer(force) {
         renderSelectedFilterBar && renderSelectedFilterBar();
         renderBackupStat && renderBackupStat();
         console.log('[ghSync] 已从 GitHub 同步本地数据');
-    } catch (e) { console.warn('[ghSync] 拉取失败：', e && e.message); }
+    } catch (e) {
+        console.warn('[ghSync] 拉取失败：', e && e.message);
+        if (force) toast('⚠️ 云端数据同步失败（网络不稳定），稍后可点「☁️ 立即拉取云端」重试');
+    }
 }
 
 /* 页面加载：更新权限UI（未登录隐藏客源tab） */
