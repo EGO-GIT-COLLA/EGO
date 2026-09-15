@@ -289,6 +289,11 @@
 
         /* 主题选择器 */
         .theme-picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 10px 0 6px; }
+        /* 皮肤主题折叠 */
+        #themeSection summary::-webkit-details-marker { display: none; }
+        #themeSection summary { list-style: none; }
+        #themeSection summary .theme-arrow { display: inline-block; transition: transform 0.2s; }
+        #themeSection[open] summary .theme-arrow { transform: rotate(90deg); }
         .theme-swatch {
             border: 2px solid var(--card-border); border-radius: 12px; padding: 10px 8px; cursor: pointer;
             background: var(--card); text-align: center; transition: all 0.2s; position: relative;
@@ -2538,10 +2543,15 @@
                 <div class="section-desc">皮肤主题 · 账号 · 数据备份</div>
             </div>
 
-            <!-- 🎨 皮肤主题 -->
+            <!-- 🎨 皮肤主题（默认折叠，点击展开） -->
             <div class="sub-card">
-                <div class="sub-title"><span>🎨 皮肤主题</span> <span style="font-size:11px;color:var(--text-hint);margin-left:8px;">16套配色，点击一键切换，自动保存</span></div>
-                <div class="theme-picker" id="themePicker"></div>
+                <details id="themeSection">
+                    <summary class="sub-title" style="cursor:pointer;outline:none;margin-bottom:0;">
+                        <span><span>🎨 皮肤主题</span> <span style="font-size:11px;color:var(--text-hint);margin-left:8px;">16套配色</span></span>
+                        <span class="theme-arrow" style="font-size:13px;color:var(--text-hint);">▸</span>
+                    </summary>
+                    <div class="theme-picker" id="themePicker"></div>
+                </details>
             </div>
 
             <!-- 👤 我的账号 -->
