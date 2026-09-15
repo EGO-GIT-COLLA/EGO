@@ -7816,7 +7816,16 @@ const AUTH_ROLE_KEY = 're_auth_role_v1';  // 'admin' | 'user' | null
 async function fetchUserRole() {
     const session = authGetSession();
     if (!session) { localStorage.removeItem(AUTH_ROLE_KEY); return null; }
-    const role = (session.user && session.user.role) || 'user';
+    let role = (session.user && session.user.role) || 'user';
+    // 从 GitHub 用户文件拉取最新 role（管理员权限实时生效）
+    try {
+        const rec = await ghReadFile(_userFilePath(session.user.email));
+        if (rec && rec.data && rec.data.role) {
+            role = rec.data.role;
+            if (session.user) session.user.role = role;
+            authSaveSession(session);
+        }
+    } catch (e) { console.warn('[auth] 拉取角色失败：', e && e.message); }
     localStorage.setItem(AUTH_ROLE_KEY, role);
     return role;
 }
