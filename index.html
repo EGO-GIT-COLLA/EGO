@@ -2640,19 +2640,19 @@
                 <p class="backup-hint" id="sbHint" style="display:none;"></p>
                 <!-- 高级配置（已默认自动配置） -->
                 <details style="margin-top:10px;">
-                    <summary style="font-size:12px;color:var(--text-hint);cursor:pointer;outline:none;">⚙️ 高级：云同步配置（已默认配置好，一般无需修改）</summary>
+                    <summary style="font-size:12px;color:var(--text-hint);cursor:pointer;outline:none;">⚙️ 高级：GitHub 云同步配置（数据保存在您的 GitHub 私有仓库，已默认配置好）</summary>
                     <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px;">
                         <div>
-                            <label style="font-size:12px;color:var(--text-hint);">Project URL</label>
-                            <input id="sbUrl" type="text" value="https://jqzwhjoyhayfmpsksjbb.supabase.co" placeholder="https://xxxx.supabase.co" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);padding:9px 10px;font-size:13px;margin-top:3px;">
+                            <label style="font-size:12px;color:var(--text-hint);">GitHub 用户名</label>
+                            <input id="ghOwner" type="text" value="EGO-GIT-COLLA" placeholder="GitHub 用户名" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);padding:9px 10px;font-size:13px;margin-top:3px;">
                         </div>
                         <div>
-                            <label style="font-size:12px;color:var(--text-hint);">anon public key</label>
-                            <input id="sbKey" type="text" value="sb_publishable_XJrYpJjWn_jyp4QVZ6KIYw_hgl8IWHm" placeholder="eyJhbGciOi..." style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);padding:9px 10px;font-size:13px;margin-top:3px;">
+                            <label style="font-size:12px;color:var(--text-hint);">仓库名（私有仓库）</label>
+                            <input id="ghRepo" type="text" value="EGO-DATA" placeholder="私有仓库名" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);padding:9px 10px;font-size:13px;margin-top:3px;">
                         </div>
                         <div>
-                            <label style="font-size:12px;color:var(--text-hint);">数据桶标识（user_key）</label>
-                            <input id="sbUserKey" type="text" value="egogaoyin" placeholder="my-phone-001" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);padding:9px 10px;font-size:13px;margin-top:3px;">
+                            <label style="font-size:12px;color:var(--text-hint);">访问令牌（Personal Access Token）</label>
+                            <input id="ghToken" type="password" value="" placeholder="ghp_...（首次使用需粘贴访问令牌）" style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);padding:9px 10px;font-size:13px;margin-top:3px;">
                         </div>
                     </div>
                     <div class="backup-actions" style="margin-top:8px;">
@@ -7814,19 +7814,11 @@ const AUTH_ROLE_KEY = 're_auth_role_v1';  // 'admin' | 'user' | null
 
 /* 权限控制：未登录隐藏客源tab，登录后显示；管理员有最高权限 */
 async function fetchUserRole() {
-    const session = await authEnsureFreshSession();
+    const session = authGetSession();
     if (!session) { localStorage.removeItem(AUTH_ROLE_KEY); return null; }
-    try {
-        const cfg = cloudLoadConfig();
-        if (!cfg || !cfg.url) return null;
-        const rows = await fetch(cfg.url + '/rest/v1/profiles?id=eq.' + encodeURIComponent(session.user.id) + '&select=role', {
-            method: 'GET',
-            headers: { 'apikey': cfg.anonKey, 'Authorization': 'Bearer ' + session.access_token }
-        }).then(r => r.ok ? r.json() : []).catch(() => []);
-        const role = (Array.isArray(rows) && rows.length > 0 && rows[0].role) ? rows[0].role : 'user';
-        localStorage.setItem(AUTH_ROLE_KEY, role);
-        return role;
-    } catch (e) { return 'user'; }
+    const role = (session.user && session.user.role) || 'user';
+    localStorage.setItem(AUTH_ROLE_KEY, role);
+    return role;
 }
 function getCachedRole() {
     try { return localStorage.getItem(AUTH_ROLE_KEY) || null; } catch (e) { return null; }
@@ -7864,53 +7856,158 @@ const CLOUD_CUS_CACHE = 're_customers_v2_cloud_cache';
 const CLOUD_MIGRATED_KEY = 're_cloud_migrated_v2';
 let __cloudSyncTimer = null;
 let __cloudSyncInFlight = false;
-
-function cloudLoadConfig() {
-    let cfg = null;
-    try {
-        const raw = localStorage.getItem(CLOUD_CONFIG_KEY);
-        if (raw) {
-            cfg = JSON.parse(raw);
-            if (!cfg || !cfg.url || !cfg.anonKey || !cfg.userKey) cfg = null;
-        }
-    } catch (e) { cfg = null; }
-    const fixedKey = _cloudDefaultUserKey();
-    // 强统一：任何设备、任何历史配置，一律强制使用当前默认项目 + 固定 user_key
-    // 原因：旧项目/旧 key 会导致跨设备不同步，这里直接接管配置，保证所有设备连同一数据桶
-    const usingDefault = cfg && cfg.url === CLOUD_DEFAULT_URL && cfg.anonKey === CLOUD_DEFAULT_ANON_KEY && cfg.userKey === fixedKey;
-    if (!cfg || !usingDefault) {
-        cfg = { url: CLOUD_DEFAULT_URL, anonKey: CLOUD_DEFAULT_ANON_KEY, userKey: fixedKey, isDefault: true };
-        try { localStorage.setItem(CLOUD_CONFIG_KEY, JSON.stringify(cfg)); } catch (e) {}
-    }
-    return cfg;
+/* =========================================================
+ * GitHub 云同步（2026-09 起替代 Supabase）
+ *   - 数据保存到私有仓库 EGO-DATA（Contents API）
+ *   - public.json：盘源/标签/应用元数据（全员共享，明文）
+ *   - users/<email-key>.json：账号资料 + 客源（AES-GCM 密码加密，
+ *     登录后由密码派生密钥；令牌泄露者无密码也解不开客源）
+ * ======================================================= */
+const GH_CFG_KEY = 're_gh_config_v1';
+const GH_CKEY = 're_gh_crypto_key_v1';      // 登录后派生的客源加密密钥（raw bytes, base64）
+const GH_ITER = 20000;
+const GH_DIR = 'users';
+function ghRepoFull() {
+    const cfg = ghLoadConfig();
+    return cfg ? (cfg.owner + '/' + cfg.repo) : 'EGO-GIT-COLLA/EGO-DATA';
 }
-function cloudSaveConfig() {
-    const url = (document.getElementById('sbUrl') || {}).value || '';
-    const anonKey = (document.getElementById('sbKey') || {}).value || '';
-    const userKey = (document.getElementById('sbUserKey') || {}).value || '';
+function ghLoadConfig() {
+    try {
+        const raw = localStorage.getItem(GH_CFG_KEY);
+        if (raw) {
+            const c = JSON.parse(raw);
+            if (c && c.owner && c.repo && c.token) return c;
+        }
+    } catch (e) {}
+    return null;
+}
+function ghSaveConfig() {
+    const owner = ((document.getElementById('ghOwner') || {}).value || '').trim();
+    const repo = ((document.getElementById('ghRepo') || {}).value || '').trim();
+    const token = ((document.getElementById('ghToken') || {}).value || '').trim();
     const hint = document.getElementById('sbHint');
-    if (!url || !anonKey) {
-        if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 请至少填写 Project URL 和 anon key。'; }
+    if (!owner || !repo || !token) {
+        if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 请完整填写 GitHub 用户名、仓库名和访问令牌。'; }
         toast('⚠️ 配置不完整');
         return;
     }
-    let cleanUrl = url.trim().replace(/\/+$/, '');
-    if (!/^https?:\/\//.test(cleanUrl)) cleanUrl = 'https://' + cleanUrl;
-    const key = anonKey.trim();
-    // 如果用户没填 user_key，沿用 cloudLoadConfig 的默认（自动生成的 hostname hash）
-    const existing = cloudLoadConfig();
-    const finalUserKey = userKey.trim() || (existing && existing.userKey) || ('device-' + Date.now());
-    const isDefault = (cleanUrl === CLOUD_DEFAULT_URL && key === CLOUD_DEFAULT_ANON_KEY && finalUserKey === CLOUD_DEFAULT_USER_KEY);
-    const cfg = { url: cleanUrl, anonKey: key, userKey: finalUserKey, isDefault };
-    localStorage.setItem(CLOUD_CONFIG_KEY, JSON.stringify(cfg));
+    const cfg = { owner: owner.replace(/\/+$/, ''), repo: repo.replace(/^\/+|\/+$/g, ''), token };
+    localStorage.setItem(GH_CFG_KEY, JSON.stringify(cfg));
     if (hint) {
         hint.style.display = 'block';
-        hint.textContent = isDefault
-            ? '✅ 已保存（使用默认配置）。每次新增/编辑数据会自动上传；如需换其他 Supabase 项目，直接改上方字段再保存。'
-            : '✅ 配置已保存。之后每次新增/编辑数据会自动上传。';
+        hint.textContent = '✅ GitHub 配置已保存。增删改会自动同步到私有仓库 ' + cfg.owner + '/' + cfg.repo + '。';
     }
     renderBackupStat();
-    toast('✅ 云备份配置已保存');
+    toast('✅ GitHub 云配置已保存');
+}
+async function ghApi(method, path, body) {
+    const cfg = ghLoadConfig();
+    if (!cfg || !cfg.token) throw new Error('未配置 GitHub');
+    const url = 'https://api.github.com/' + path;
+    const headers = { 'Authorization': 'token ' + cfg.token, 'Accept': 'application/vnd.github+json', 'User-Agent': 'fangchan-helper' };
+    const opts = { method, headers };
+    if (body !== undefined) { opts.body = JSON.stringify(body); headers['Content-Type'] = 'application/json'; }
+    const res = await fetch(url, opts);
+    if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        throw new Error('GitHub HTTP ' + res.status + (t ? '：' + t.slice(0, 200) : ''));
+    }
+    return res.status === 204 ? null : res.json();
+}
+async function ghReadFile(path) {
+    try {
+        const j = await ghApi('GET', 'repos/' + ghRepoFull() + '/contents/' + path);
+        if (!j || !j.content) return null;
+        let txt;
+        try { txt = decodeURIComponent(escape(atob(j.content.replace(/\n/g, '')))); }
+        catch (e) { txt = atob(j.content.replace(/\n/g, '')); }
+        return { data: JSON.parse(txt), sha: j.sha };
+    } catch (e) {
+        if (String(e.message).includes('404')) return null;
+        throw e;
+    }
+}
+async function ghWriteFile(path, data, sha) {
+    const content = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+    let payload = { message: 'sync: ' + path, content };
+    if (sha) payload.sha = sha;
+    for (let i = 0; i < 3; i++) {
+        try {
+            await ghApi('PUT', 'repos/' + ghRepoFull() + '/contents/' + path, payload);
+            return true;
+        } catch (e) {
+            if (String(e.message).includes('409') || String(e.message).includes('sha')) {
+                const cur = await ghReadFile(path);
+                if (!cur) { if (payload.sha) delete payload.sha; continue; }
+                payload.sha = cur.sha;
+                continue;
+            }
+            throw e;
+        }
+    }
+    return false;
+}
+/* 轻量轮询：只拿某文件最新 commit（几十字节），内容有更新才拉全量 */
+async function ghLatestCommit(path) {
+    try {
+        const j = await ghApi('GET', 'repos/' + ghRepoFull() + '/commits?path=' + encodeURIComponent(path) + '&per_page=1');
+        if (Array.isArray(j) && j.length > 0 && j[0].commit && j[0].commit.committer) {
+            return { sha: j[0].sha, date: j[0].commit.committer.date };
+        }
+    } catch (e) {}
+    return null;
+}
+/* ---- 密码工具（Web Crypto：PBKDF2 派生 + AES-GCM 加密客源）---- */
+function _b64ToBytes(b64) { return Uint8Array.from(atob(b64), c => c.charCodeAt(0)); }
+function _bytesToB64(u8) { return btoa(String.fromCharCode.apply(null, u8)); }
+async function _pwSalt() { return _bytesToB64(crypto.getRandomValues(new Uint8Array(16))); }
+async function _pwHash(password, saltB64, iter) {
+    const enc = new TextEncoder();
+    const baseKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: _b64ToBytes(saltB64), iterations: iter, hash: 'SHA-256' }, baseKey, 256);
+    return Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function _pwKey(password, saltB64, iter, use) {
+    const enc = new TextEncoder();
+    const baseKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt: _b64ToBytes(saltB64), iterations: iter, hash: 'SHA-256' },
+        baseKey,
+        { name: 'AES-GCM', length: 256 }, false, [use]
+    );
+}
+async function _ghEncrypt(plain, key) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(plain));
+    return { iv: _bytesToB64(iv), ct: _bytesToB64(new Uint8Array(ct)) };
+}
+async function _ghDecrypt(payload, key) {
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: _b64ToBytes(payload.iv) }, key, _b64ToBytes(payload.ct));
+    return new TextDecoder().decode(pt);
+}
+/* 登录成功后把派生密钥存 localStorage（不存明文密码） */
+async function _storeCryptoKey(password, saltB64, iter) {
+    const key = await _pwKey(password, saltB64, iter, 'encrypt');
+    const raw = await crypto.subtle.exportKey('raw', key);
+    localStorage.setItem(GH_CKEY, _bytesToB64(new Uint8Array(raw)));
+}
+function _loadCryptoKey() {
+    const b64 = localStorage.getItem(GH_CKEY);
+    if (!b64) return null;
+    return crypto.subtle.importKey('raw', _b64ToBytes(b64), 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+/* 邮箱 → 用户文件名 */
+function _emailFileKey(email) {
+    return String(email || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown';
+}
+function _userFilePath(email) { return GH_DIR + '/' + _emailFileKey(email) + '.json'; }
+
+
+function cloudLoadConfig() {
+    return ghLoadConfig();
+}
+function cloudSaveConfig() {
+    ghSaveConfig();
 }
 // 收集当前全量数据为 payload（复用 backupCollect 的结构，补加同步时间戳）
 function cloudCollectPayload() {
@@ -7924,17 +8021,27 @@ function cloudCollectPayload() {
 let __cloudSyncLastError = '';
 async function cloudSyncUpload() {
     if (__cloudSyncInFlight) return false;
-    const cfg = cloudLoadConfig();
-    if (!cfg || !cfg.url || !cfg.anonKey || !cfg.userKey) return false;
+    const cfg = ghLoadConfig();
+    if (!cfg) return false;
     __cloudSyncInFlight = true;
     try {
         const payload = cloudCollectPayload();
-        // 客源按账号隔离：聚合桶只同步盘源+标签，客源一律不走聚合桶（防跨账号泄露）
+        // 客源按账号隔离：public.json 只同步盘源+标签，客源加密进 users/<key>.json
         delete payload[CUS_STORAGE];
+        // 组装公共数据
+        let meta = null;
+        try { meta = JSON.parse(payload[BACKUP_APP_KEY] || 'null'); } catch (e) { meta = null; }
+        let props = [];
+        try { props = JSON.parse(payload[PRO_STORAGE] || '[]'); } catch (e) { props = []; }
+        let tags = [];
+        try { tags = JSON.parse(payload[PRO_TAG_STORAGE] || '[]'); } catch (e) { tags = []; }
+        const pubData = { meta: meta, properties: props, tags: tags, updated_at: new Date().toISOString() };
+        const session = authGetSession();
         // ===== 省流量：内容指纹无变化则跳过整次同步（不下载、不上传）=====
         try {
+            const hashSrc = JSON.stringify(pubData) + (session && session.user ? '|' + session.user.email : '');
             const lastHash = localStorage.getItem(CLOUD_LAST_HASH_KEY) || '';
-            const curHash = _payloadHash(payload);
+            const curHash = _payloadHash(hashSrc);
             const hasSynced = !!localStorage.getItem(CLOUD_LAST_SYNC_KEY);
             if (lastHash && curHash && lastHash === curHash && hasSynced) {
                 __cloudSyncLastError = '';
@@ -7942,78 +8049,66 @@ async function cloudSyncUpload() {
             }
         } catch (e) {}
         // ===== 防数据丢失保护 =====
-        // 1) 本地盘源+客源全空时，禁止上传（避免把云端数据清空）
         let _lp = [], _lc = [];
         try { _lp = loadProperties(); } catch (e) {}
         try { _lc = loadCustomers(); } catch (e) {}
-        if (!Array.isArray(_lp)) _lp = [];
-        if (!Array.isArray(_lc)) _lc = [];
-        if (_lp.length === 0 && _lc.length === 0) {
+        if ((!_lp || !_lp.length) && (!_lc || !_lc.length)) {
             __cloudSyncLastError = '';
             return false;
         }
-        // 2/3/4) 上传前拉取云端一次，做合并保护（防空覆盖 + 防残留标签污染）
-        try {
-            const rows = await fetch(cfg.url + '/rest/v1/' + CLOUD_TABLE + '?user_key=eq.' + encodeURIComponent(cfg.userKey) + '&select=payload&limit=1', {
-                method: 'GET',
-                headers: { 'apikey': cfg.anonKey, 'Authorization': 'Bearer ' + cfg.anonKey }
-            }).then(r => r.ok ? r.json() : []).catch(() => []);
-            const cloudPayload = (Array.isArray(rows) && rows.length > 0 && rows[0].payload) ? rows[0].payload : null;
-            if (cloudPayload) {
-                // 2) 本地盘源为空但云端有盘源时，从云端保留（只更新本地非空部分，防止空覆盖）
-                if (_lp.length === 0 && cloudPayload[PRO_STORAGE] != null) {
-                    payload[PRO_STORAGE] = cloudPayload[PRO_STORAGE];
-                }
-                // 4) 标签池保护：以云端为主，只补充本地「实际被盘源使用」的新标签，
-                //    防止历史残留/已删除标签（如已删的旧自定义标签）随上传重新污染云端
-                if (cloudPayload[PRO_TAG_STORAGE] != null) {
-                    try {
-                        const cloudTags = JSON.parse(cloudPayload[PRO_TAG_STORAGE]);
-                        const merged = Array.isArray(cloudTags) ? cloudTags.slice() : [];
-                        const used = new Set();
-                        _lp.forEach(p => { (p.tags || []).forEach(t => used.add(t)); });
-                        let localTags = [];
-                        try { localTags = JSON.parse(localStorage.getItem(PRO_TAG_STORAGE) || '[]'); } catch (e) {}
-                        (Array.isArray(localTags) ? localTags : []).forEach(t => {
-                            if (t && merged.indexOf(t) < 0 && used.has(t)) merged.push(t);
-                        });
-                        payload[PRO_TAG_STORAGE] = JSON.stringify(merged);
-                    } catch (e) {}
-                }
+        // 合并保护：读云端 public.json，本地盘源空则保留云端，标签以云端为主只补被使用的
+        let cloudPub = null;
+        try { cloudPub = await ghReadFile('public.json'); } catch (e) { cloudPub = null; }
+        if (cloudPub && cloudPub.data) {
+            if ((!_lp || !_lp.length) && Array.isArray(cloudPub.data.properties) && cloudPub.data.properties.length > 0) {
+                pubData.properties = cloudPub.data.properties;
             }
-        } catch (e) {}
-        // ===== 防数据丢失保护结束 =====
-        const endpoint = cfg.url + '/rest/v1/' + CLOUD_TABLE;
-        const body = JSON.stringify({
-            user_key: cfg.userKey,
-            payload: payload,
-            updated_at: new Date().toISOString()
-        });
-        const res = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-                'apikey': cfg.anonKey,
-                'Authorization': 'Bearer ' + cfg.anonKey,
-                'Content-Type': 'application/json',
-                'Prefer': 'resolution=merge-duplicates,return=representation'
-            },
-            body: body
-        });
-        if (res.ok) {
+            if (Array.isArray(cloudPub.data.tags)) {
+                try {
+                    const cloudTags = cloudPub.data.tags.slice();
+                    const used = new Set();
+                    props.forEach(p => { (p.tags || []).forEach(t => used.add(t)); });
+                    (Array.isArray(tags) ? tags : []).forEach(t => {
+                        if (t && cloudTags.indexOf(t) < 0 && used.has(t)) cloudTags.push(t);
+                    });
+                    pubData.tags = cloudTags;
+                } catch (e) {}
+            }
+        }
+        // 上传 public.json
+        const pubOk = await ghWriteFile('public.json', pubData, cloudPub ? cloudPub.sha : undefined);
+        // 客源：登录态下加密写自己的 user 文件
+        let cusOk = true;
+        if (session && session.user && session.user.email) {
+            try {
+                const cus = loadCustomers() || [];
+                const rec = await ghReadFile(_userFilePath(session.user.email));
+                if (rec && rec.data) {
+                    const key = await _loadCryptoKey();
+                    if (key) {
+                        const f = rec.data;
+                        f.data = await _ghEncrypt(JSON.stringify({ customers: cus }), key);
+                        await ghWriteFile(_userFilePath(session.user.email), f, rec.sha);
+                    }
+                }
+            } catch (e) { cusOk = false; console.warn('[ghSync] 客源上传失败：', e && e.message); }
+        }
+        if (pubOk || !session) {
             localStorage.setItem(CLOUD_LAST_SYNC_KEY, String(Date.now()));
-            try { localStorage.setItem(CLOUD_LAST_HASH_KEY, _payloadHash(payload)); } catch (e) {}
+            try {
+                const hashSrc2 = JSON.stringify(pubData) + (session && session.user ? '|' + session.user.email : '');
+                localStorage.setItem(CLOUD_LAST_HASH_KEY, _payloadHash(hashSrc2));
+            } catch (e) {}
             __cloudSyncLastError = '';
             try { localStorage.removeItem('re_cloud_sync_err'); } catch (e) {}
             return true;
         }
-        const txt = await res.text().catch(() => '');
-        console.warn('[cloudSync] 上传失败', res.status, txt);
-        __cloudSyncLastError = 'HTTP ' + res.status + '：' + (txt || '无响应体').slice(0, 300);
+        __cloudSyncLastError = 'GitHub 写入失败';
         try { localStorage.setItem('re_cloud_sync_err', JSON.stringify({ ts: Date.now(), msg: __cloudSyncLastError })); } catch (e) {}
         return false;
     } catch (e) {
-        console.warn('[cloudSync] 上传异常', e && e.message);
-        __cloudSyncLastError = (e && e.message) ? ('网络异常：' + e.message) : '网络异常';
+        console.warn('[ghSync] 上传异常', e && e.message);
+        __cloudSyncLastError = (e && e.message) ? ('同步异常：' + e.message) : '同步异常';
         try { localStorage.setItem('re_cloud_sync_err', JSON.stringify({ ts: Date.now(), msg: __cloudSyncLastError })); } catch (e) {}
         return false;
     } finally {
@@ -8022,8 +8117,7 @@ async function cloudSyncUpload() {
 }
 // 防抖：连续保存只合并成一次上传（2 秒窗口）。fire-and-forget，不阻塞 UI。
 function cloudSyncDebounced() {
-    const cfg = cloudLoadConfig();
-    if (!cfg || !cfg.url || !cfg.anonKey) return;
+    if (!ghLoadConfig()) return;
     if (__cloudSyncTimer) clearTimeout(__cloudSyncTimer);
     __cloudSyncTimer = setTimeout(() => {
         __cloudSyncTimer = null;
@@ -8036,32 +8130,21 @@ function cloudSyncDebounced() {
 }
 // 手动立即同步（跳过防抖）
 async function cloudSyncNow() {
-    const cfg = cloudLoadConfig();
+    const cfg = ghLoadConfig();
     const hint = document.getElementById('sbHint');
-    if (!cfg || !cfg.url || !cfg.anonKey) {
-        if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 云备份配置缺失，请填写并保存。'; }
+    if (!cfg) {
+        if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 云备份配置缺失，请在高级配置里填写 GitHub 信息并保存。'; }
         toast('⚠️ 云备份配置缺失');
         return;
     }
-    if (hint) { hint.style.display = 'block'; hint.textContent = (cfg.isDefault ? 'ℹ️ 使用已预置的默认配置（可在上方修改后点「保存配置」）。' : ''); }
-    toast('⏳ 正在上传到云端...');
+    toast('⏳ 正在上传到 GitHub...');
     const ok = await cloudSyncUpload();
     if (ok) {
-        if (hint) { hint.style.display = 'block'; hint.textContent = '✅ 已同步到云端（数据全量备份到 Supabase，下次有变更会自动更新）。'; }
-        toast('✅ 已同步到云端');
+        if (hint) { hint.style.display = 'block'; hint.textContent = '✅ 已同步到 GitHub 私有仓库（' + cfg.owner + '/' + cfg.repo + '），下次有变更会自动更新。'; }
+        toast('✅ 已同步到 GitHub');
     } else {
         const why = __cloudSyncLastError || '未知错误';
-        let guide = '';
-        if (why.includes('403') || why.includes('violates row-level security')) {
-            guide = '【常见原因】表 RLS 策略未授权 anon 角色写。请在 Supabase SQL Editor 运行：\n\nGRANT insert, update, select ON sb_sync_bucket TO anon;';
-        } else if (why.includes('404') || why.includes('does not exist')) {
-            guide = '【常见原因】表未创建。请在 Supabase SQL Editor 运行：\n\ncreate table sb_sync_bucket (user_key text primary key, payload jsonb not null, updated_at timestamptz default now());';
-        } else if (why.includes('401')) {
-            guide = '【常见原因】anon key 不正确或已失效，请重新从项目设置 → API 复制。';
-        } else if (why.includes('Failed to fetch') || why.includes('NetworkError') || why.includes('网络异常')) {
-            guide = '【常见原因】网络没通或 URL 拼写错。请确认手机有网、Project URL 以 https:// 开头。';
-        }
-        const msg = '⚠️ 上传失败：' + why + (guide ? '\n\n排查：' + guide : '');
+        const msg = '⚠️ 上传失败：' + why;
         if (hint) { hint.style.display = 'block'; hint.textContent = msg; hint.style.whiteSpace = 'pre-wrap'; }
         toast('⚠️ 云同步失败');
     }
@@ -8069,56 +8152,43 @@ async function cloudSyncNow() {
 }
 // 从云端拉取并恢复
 async function cloudRestore() {
-    const cfg = cloudLoadConfig();
+    const cfg = ghLoadConfig();
     const hint = document.getElementById('sbHint');
-    if (!cfg || !cfg.url || !cfg.anonKey || !cfg.userKey) {
-        if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 请先填写并保存 Supabase 配置。'; }
+    if (!cfg) {
+        if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 请先填写并保存 GitHub 配置。'; }
         toast('⚠️ 未配置云备份');
         return;
     }
-    toast('⏳ 正在从云端拉取...');
+    toast('⏳ 正在从 GitHub 拉取...');
     try {
-        const endpoint = cfg.url + '/rest/v1/' + CLOUD_TABLE + '?user_key=eq.' + encodeURIComponent(cfg.userKey) + '&select=payload,updated_at&limit=1';
-        const res = await fetch(endpoint, {
-            method: 'GET',
-            headers: { 'apikey': cfg.anonKey, 'Authorization': 'Bearer ' + cfg.anonKey }
-        });
-        if (!res.ok) {
-            const txt = await res.text().catch(() => '');
-            if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 拉取失败（HTTP ' + res.status + '）：' + txt.slice(0, 200); }
-            toast('⚠️ 拉取失败');
-            return;
-        }
-        const rows = await res.json();
-        if (!Array.isArray(rows) || rows.length === 0) {
-            if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 云端没有该数据桶的备份记录。'; }
+        const rec = await ghReadFile('public.json');
+        if (!rec || !rec.data || (!Array.isArray(rec.data.properties) && !Array.isArray(rec.data.tags))) {
+            if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ GitHub 仓库中还没有备份数据。请先在有数据的设备上点「立即同步」。'; }
             toast('⚠️ 云端无备份');
             return;
         }
-        const row = rows[0];
-        const payload = row.payload;
-        if (!payload || (!payload[CUS_STORAGE] && !payload[PRO_STORAGE])) {
-            if (hint) {
-                hint.style.display = 'block';
-                hint.textContent = '⚠️ 云端该数据桶（' + cfg.userKey + '）当前没有有效备份数据。\n\n【恢复步骤】\n1. 在你录入过数据的设备上打开本应用；\n2. 到「备份」页点「立即同步到云端」；\n3. 等提示同步成功后，回到本设备再点「从云端恢复」。';
-                hint.style.whiteSpace = 'pre-wrap';
-            }
-            toast('⚠️ 云端数据无效，请先在有数据的设备上同步');
-            return;
-        }
+        const pub = rec.data;
         customConfirm('从云端恢复将覆盖当前所有客源/盘源/标签数据，确定继续吗？', () => {
-            BACKUP_KEYS.forEach(k => {
-                if (payload[k] != null) localStorage.setItem(k, payload[k]);
-            });
-            if (payload[BACKUP_APP_KEY] != null) localStorage.setItem(BACKUP_APP_KEY, payload[BACKUP_APP_KEY]);
-            renderCusTagChips(); renderProTagChips();
-            renderCustomerList(); renderPropertyList();
-            renderProPriceFilter(); renderProTypeFilter(); renderProTagFilter();
-            renderSelectedFilterBar(); renderBackupStat();
-            resetCustomerForm(); resetPropertyForm();
-            const cloudTs = rows[0].updated_at ? new Date(rows[0].updated_at).toLocaleString('zh-CN') : '';
-            if (hint) { hint.style.display = 'block'; hint.textContent = '✅ 已从云端恢复（云端备份时间：' + cloudTs + '）。'; }
-            toast('✅ 已从云端恢复');
+            try {
+                if (Array.isArray(pub.properties)) localStorage.setItem(PRO_STORAGE, JSON.stringify(pub.properties.map(normalizeProperty)));
+                if (Array.isArray(pub.tags)) localStorage.setItem(PRO_TAG_STORAGE, JSON.stringify(pub.tags));
+                if (pub.meta != null) localStorage.setItem(BACKUP_APP_KEY, JSON.stringify(pub.meta));
+                const session = authGetSession();
+                if (session && session.user && session.user.email) {
+                    cloudPullMyCustomers().then(() => {
+                        renderCusTagChips(); renderCustomerList(); resetCustomerForm();
+                    }).catch(() => {});
+                }
+                renderCusTagChips(); renderProTagChips();
+                renderCustomerList(); renderPropertyList();
+                renderProPriceFilter(); renderProTypeFilter(); renderProTagFilter();
+                renderSelectedFilterBar(); renderBackupStat();
+                resetCustomerForm(); resetPropertyForm();
+                if (hint) { hint.style.display = 'block'; hint.textContent = '✅ 已从 GitHub 恢复（备份时间：' + (pub.updated_at || '未知') + '）。'; }
+                toast('✅ 已从云端恢复');
+            } catch (e) {
+                if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 恢复异常：' + (e && e.message); }
+            }
         });
     } catch (e) {
         if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 拉取异常：' + (e && e.message); }
@@ -8208,36 +8278,23 @@ async function restDelete(table, pkCol, pkVal) {
 }
 /** 更新 Supabase Auth 自身用户的 metadata（头像/昵称/手机号） */
 async function authUpdateProfile(partialMeta) {
-    const session = await authEnsureFreshSession();
-    if (!session) throw new Error('未登录');
-    const cfg = cloudLoadConfig();
-    const res = await fetch(cfg.url + '/auth/v1/user', {
-        method: 'PUT',
-        headers: {
-            'apikey': cfg.anonKey,
-            'Authorization': 'Bearer ' + session.access_token,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ data: partialMeta || {} })
-    });
-    if (!res.ok) {
-        const txt = await res.text().catch(() => '');
-        throw new Error('HTTP ' + res.status + '：' + (txt || '无响应体').slice(0, 300));
-    }
-    const data = await res.json();
-    if (data) {
-        // 更新本地 session 的 user 字段（meta 写回）
-        const s = authGetSession() || {};
-        s.user = Object.assign({}, s.user || {}, data.user ? {
-            id: data.user.id,
-            email: data.user.email,
-            avatar: ((data.user.user_metadata && data.user.user_metadata.avatar) || ''),
-            phone: ((data.user.user_metadata && data.user.user_metadata.phone) || ''),
-            nickname: ((data.user.user_metadata && data.user.user_metadata.nickname) || '')
-        } : {});
-        authSaveSession(s);
-    }
-    return data;
+    const session = authGetSession();
+    if (!session || !session.user || !session.user.email) throw new Error('未登录');
+    const path = _userFilePath(session.user.email);
+    const rec = await ghReadFile(path);
+    if (!rec || !rec.data) throw new Error('账号数据不存在');
+    const f = rec.data;
+    if (partialMeta.avatar != null) f.avatar = partialMeta.avatar;
+    if (partialMeta.nickname != null) f.nickname = partialMeta.nickname;
+    if (partialMeta.phone != null) f.phone = partialMeta.phone;
+    if (partialMeta.role != null) f.role = partialMeta.role;
+    await ghWriteFile(path, f, rec.sha);
+    // 更新本地 session
+    const s = authGetSession() || {};
+    s.user = Object.assign({}, s.user || {}, { avatar: f.avatar || '', nickname: f.nickname || '', phone: f.phone || '', role: f.role || 'user' });
+    authSaveSession(s);
+    if (partialMeta.role != null) localStorage.setItem(AUTH_ROLE_KEY, f.role);
+    return f;
 }
 /** Canvas 压缩图片到 200x200 JPEG，返回 base64 data URL */
 function compressImageToAvatar(file, maxPx, quality) {
@@ -8282,165 +8339,101 @@ function compressImageToAvatar(file, maxPx, quality) {
  * ======================================================= */
 
 /** 把一个盘源对象 upsert 到共享云端表 re_properties（fire 端调用方 try/catch） */
+/** 盘源已保存在本地；GitHub 模式下由整体同步统一上传 */
 async function cloudUpsertProperty(p) {
-    if (!authGetSession()) return;
     if (!p || !p.id) return;
-    const isoTs = new Date().toISOString();
-    await restUpsert(CLOUD_PRO_TABLE, 'id', {
-        id: String(p.id),
-        data: normalizeProperty(p),
-        updated_at: isoTs
-    });
+    cloudSyncDebounced();
 }
 
-/** 从共享云端表删除一个盘源 */
+/** 盘源已从本地删除；GitHub 模式下由整体同步统一上传 */
 async function cloudDeleteProperty(id) {
-    if (!authGetSession()) return;
     if (!id) return;
-    await restDelete(CLOUD_PRO_TABLE, 'id', String(id));
+    cloudSyncDebounced();
 }
 
 /** 把一个客源对象 upsert 到隔离云端表 re_customers（自动带 owner_id） */
+/** 客源已保存在本地；GitHub 模式下由整体同步统一上传（加密进 user 文件） */
 async function cloudUpsertCustomer(c) {
-    const session = await authEnsureFreshSession();
-    if (!session) return;
     if (!c || !c.id) return;
-    const isoTs = new Date().toISOString();
-    await restUpsert(CLOUD_CUS_TABLE, 'id', {
-        id: String(c.id),
-        owner_id: session.user.id,
-        data: c,
-        updated_at: isoTs
-    });
+    cloudSyncDebounced();
 }
 
 /** 登录态：从业务表拉取【本账号】的客源合并到本地 */
+/** 登录态：从 GitHub 拉取【本账号】的客源（解密）合并到本地 */
 async function cloudPullMyCustomers() {
-    const session = await authEnsureFreshSession();
-    if (!session) return;
+    const session = authGetSession();
+    if (!session || !session.user || !session.user.email) return;
     try {
-        const rows = await restList(CLOUD_CUS_TABLE, {
-            select: 'id,data,updated_at',
-            order: 'updated_at.desc',
-            limit: '10000',
-            owner_id: 'eq.' + session.user.id
-        });
-        const map = new Map();
-        try { loadCustomers().forEach(c => map.set(String(c.id), c)); } catch (e) {}
-        (Array.isArray(rows) ? rows : []).forEach(r => {
-            if (r && r.data && r.id) map.set(String(r.id), r.data);
-        });
-        const merged = Array.from(map.values());
-        localStorage.setItem(CUS_STORAGE, JSON.stringify(merged));
-        try { localStorage.setItem(CLOUD_CUS_CACHE, JSON.stringify({ ts: Date.now(), items: merged.length, cloudCnt: merged.length })); } catch (e) {}
+        const rec = await ghReadFile(_userFilePath(session.user.email));
+        if (!rec || !rec.data) return;
+        const f = rec.data;
+        let customers = [];
+        if (f.data && f.data.iv && f.data.ct) {
+            const key = await _loadCryptoKey();
+            if (key) {
+                try {
+                    const plain = await _ghDecrypt(f.data, key);
+                    const obj = JSON.parse(plain);
+                    if (obj && Array.isArray(obj.customers)) customers = obj.customers;
+                } catch (e) { console.warn('[ghSync] 客源解密失败：', e && e.message); }
+            }
+        }
+        if (customers.length) {
+            localStorage.setItem(CUS_STORAGE, JSON.stringify(customers));
+            try { localStorage.setItem(CLOUD_CUS_CACHE, JSON.stringify({ ts: Date.now(), items: customers.length, cloudCnt: customers.length })); } catch (e) {}
+        }
         try { renderCustomerList && renderCustomerList(); } catch (e) {}
         try { renderCusTagChips && renderCusTagChips(); } catch (e) {}
-        console.log('[cloudSync] 已同步本账号客源 ' + merged.length + ' 条');
-    } catch (e) { console.warn('[cloudSync] 拉取本账号客源失败：', e.message); }
+        console.log('[ghSync] 已同步本账号客源 ' + customers.length + ' 条');
+    } catch (e) { console.warn('[ghSync] 拉取本账号客源失败：', e.message); }
 }
 
 /** 登录态：把本地客源批量上传到业务表（归属本账号） */
+/** 登录态：把本地客源加密上传到 GitHub user 文件 */
 async function cloudPushMyCustomers() {
-    const session = await authEnsureFreshSession();
-    if (!session) return;
-    let list = [];
-    try { list = loadCustomers(); } catch (e) {}
-    if (!Array.isArray(list) || list.length === 0) return;
-    const rows = list.filter(c => c && c.id).map(c => ({
-        id: String(c.id),
-        owner_id: session.user.id,
-        data: c,
-        updated_at: new Date((Number(c.updatedAt) || Number(c.createdAt)) || Date.now()).toISOString()
-    }));
-    try { await restUpsertBatch(CLOUD_CUS_TABLE, rows); } catch (e) { console.warn('[cloudSync] 上传客源失败：', e.message); }
+    const session = authGetSession();
+    if (!session || !session.user || !session.user.email) return;
+    try {
+        const cus = loadCustomers() || [];
+        const rec = await ghReadFile(_userFilePath(session.user.email));
+        if (!rec || !rec.data) return;
+        const key = await _loadCryptoKey();
+        if (!key) return;
+        const f = rec.data;
+        f.data = await _ghEncrypt(JSON.stringify({ customers: cus }), key);
+        await ghWriteFile(_userFilePath(session.user.email), f, rec.sha);
+    } catch (e) { console.warn('[ghSync] 上传客源失败：', e.message); }
 }
 
 /** 从隔离云端表删除一个客源（RLS 会校验 owner_id） */
+/** 客源已从本地删除；GitHub 模式下由整体同步统一上传 */
 async function cloudDeleteCustomer(id) {
-    if (!(await authEnsureFreshSession())) return;
     if (!id) return;
-    await restDelete(CLOUD_CUS_TABLE, 'id', String(id));
+    cloudSyncDebounced();
 }
 
 /** 从云端拉取盘源 + 客源，合并到本地（union by id，云端字段优先）。登录态下才有效。 */
+/** 从 GitHub 拉取盘源 + 本账号客源，覆盖合并到本地 */
 async function cloudRefreshAllMerge(notify) {
-    const session = authGetSession();
-    if (!session) return;
     try {
-        // 优先从聚合桶（sb_sync_bucket）拉取完整数据：盘源+客源+标签都在里面
-        const cfg = cloudLoadConfig();
+        const rec = await ghReadFile('public.json');
         let cloudProCnt = 0, cloudCusCnt = 0;
-        if (cfg && cfg.url && cfg.anonKey && cfg.userKey) {
-            const rows = await fetch(cfg.url + '/rest/v1/' + CLOUD_TABLE + '?user_key=eq.' + encodeURIComponent(cfg.userKey) + '&select=payload,updated_at&limit=1', {
-                method: 'GET',
-                headers: { 'apikey': cfg.anonKey, 'Authorization': 'Bearer ' + cfg.anonKey }
-            }).then(r => r.ok ? r.json() : []).catch(() => []);
-            if (Array.isArray(rows) && rows.length > 0 && rows[0] && rows[0].payload) {
-                const payload = rows[0].payload;
-                if (payload[PRO_STORAGE] != null) {
-                    const rawPro = typeof payload[PRO_STORAGE] === 'string' ? payload[PRO_STORAGE] : JSON.stringify(payload[PRO_STORAGE]);
-                    const arr = JSON.parse(rawPro || '[]');
-                    localStorage.setItem(PRO_STORAGE, JSON.stringify(Array.isArray(arr) ? arr.map(normalizeProperty) : []));
-                    cloudProCnt = Array.isArray(arr) ? arr.length : 0;
-                    try { localStorage.setItem(CLOUD_PRO_CACHE, JSON.stringify({ ts: Date.now(), items: cloudProCnt, cloudCnt: cloudProCnt })); } catch (e) {}
-                }
-                // 客源按账号隔离：聚合桶不含客源，登录态下从业务表拉取本账号客源
-                if (authGetSession()) { await cloudPullMyCustomers(); }
-                if (payload[PRO_TAG_STORAGE] != null) localStorage.setItem(PRO_TAG_STORAGE, payload[PRO_TAG_STORAGE]);
-                if (payload[BACKUP_APP_KEY] != null) localStorage.setItem(BACKUP_APP_KEY, payload[BACKUP_APP_KEY]);
-                localStorage.setItem(CLOUD_LAST_SYNC_KEY, String(Date.now()));
-                try {
-                    renderCustomerList && renderCustomerList();
-                    renderPropertyList && renderPropertyList();
-                    renderProTagFilter && renderProTagFilter();
-                    renderProPriceFilter && renderProPriceFilter();
-                    renderProTypeFilter && renderProTypeFilter();
-                    renderSelectedFilterBar && renderSelectedFilterBar();
-                    renderBackupStat && renderBackupStat();
-                    renderCusTagChips && renderCusTagChips();
-                    renderProTagChips && renderProTagChips();
-                } catch (e) {}
-                if (notify) toast('☁️ 已从云端同步（盘源' + cloudProCnt + '/客源' + cloudCusCnt + '）');
-                return { cloudProCnt, cloudCusCnt };
+        if (rec && rec.data) {
+            const pub = rec.data;
+            if (Array.isArray(pub.properties)) {
+                const arr = pub.properties.map(normalizeProperty);
+                localStorage.setItem(PRO_STORAGE, JSON.stringify(arr));
+                cloudProCnt = arr.length;
+                try { localStorage.setItem(CLOUD_PRO_CACHE, JSON.stringify({ ts: Date.now(), items: cloudProCnt, cloudCnt: cloudProCnt })); } catch (e) {}
             }
+            if (Array.isArray(pub.tags)) localStorage.setItem(PRO_TAG_STORAGE, JSON.stringify(pub.tags));
+            if (pub.meta != null) localStorage.setItem(BACKUP_APP_KEY, JSON.stringify(pub.meta));
+            localStorage.setItem(CLOUD_LAST_SYNC_KEY, String(Date.now()));
         }
-
-        // 聚合桶无数据时回退：从明细表合并
-        const [pros, cuss] = await Promise.all([
-            restList(CLOUD_PRO_TABLE, { select: 'id,data,updated_at', order: 'updated_at.desc', limit: '10000' }),
-            restList(CLOUD_CUS_TABLE, { select: 'id,data,updated_at', order: 'updated_at.desc', limit: '10000',
-                owner_id: 'eq.' + session.user.id })
-        ]);
-
-        // 合并盘源
-        const proMap = new Map();
-        loadProperties().forEach(p => proMap.set(String(p.id), p));
-        if (Array.isArray(pros)) {
-            pros.forEach(row => {
-                if (row && row.data && row.id) {
-                    proMap.set(String(row.id), normalizeProperty(row.data));
-                    cloudProCnt++;
-                }
-            });
+        if (authGetSession()) {
+            await cloudPullMyCustomers();
+            cloudCusCnt = (loadCustomers() || []).length;
         }
-        const mergedPros = Array.from(proMap.values());
-        localStorage.setItem(PRO_STORAGE, JSON.stringify(mergedPros.map(normalizeProperty)));
-        try { localStorage.setItem(CLOUD_PRO_CACHE, JSON.stringify({ ts: Date.now(), items: mergedPros.length, cloudCnt: cloudProCnt })); } catch (e) {}
-
-        // 合并客源
-        const cusMap = new Map();
-        loadCustomers().forEach(c => cusMap.set(String(c.id), c));
-        if (Array.isArray(cuss)) {
-            cuss.forEach(row => {
-                if (row && row.data && row.id) {
-                    cusMap.set(String(row.id), row.data);
-                    cloudCusCnt++;
-                }
-            });
-        }
-        const mergedCuss = Array.from(cusMap.values());
-        localStorage.setItem(CUS_STORAGE, JSON.stringify(mergedCuss));
-        try { localStorage.setItem(CLOUD_CUS_CACHE, JSON.stringify({ ts: Date.now(), items: mergedCuss.length, cloudCnt: cloudCusCnt })); } catch (e) {}
         try {
             renderCustomerList && renderCustomerList();
             renderPropertyList && renderPropertyList();
@@ -8452,15 +8445,16 @@ async function cloudRefreshAllMerge(notify) {
             renderCusTagChips && renderCusTagChips();
             renderProTagChips && renderProTagChips();
         } catch (e) {}
-        if (notify) toast('☁️ 云端数据已同步到本地（盘源' + cloudProCnt + '/客源' + cloudCusCnt + '）');
+        if (notify) toast('☁️ 已从 GitHub 同步（盘源' + cloudProCnt + '/客源' + cloudCusCnt + '）');
         return { cloudProCnt, cloudCusCnt };
     } catch (e) {
-        console.warn('[cloudRefreshAll] 失败：', e && e.message);
+        console.warn('[ghRefresh] 失败：', e && e.message);
         return null;
     }
 }
 
 /** 首次登录迁移：本地老数据幂等 upsert 到云端新表（per-user marker） */
+/** 首次登录迁移：把本地数据整体上传到 GitHub（public.json + 加密客源） */
 async function cloudMigrateLocalIfNeeded() {
     const session = authGetSession();
     if (!session) return;
@@ -8468,38 +8462,16 @@ async function cloudMigrateLocalIfNeeded() {
     if (localStorage.getItem(markerKey) === '1') return; // 已迁移过（此账号）
     const pros = loadProperties() || [];
     const cuss = loadCustomers() || [];
-    if (pros.length === 0 && cuss.length === 0) {
+    if ((!pros || pros.length === 0) && (!cuss || cuss.length === 0)) {
         localStorage.setItem(markerKey, '1');
         return;
     }
-    toast('⏳ 正在迁移本地数据到云端…');
-    let proOk = 0, cusOk = 0;
-    try {
-        if (pros.length > 0) {
-            const rows = pros.filter(p => p && p.id).map(p => ({
-                id: String(p.id),
-                data: normalizeProperty(p),
-                updated_at: new Date((Number(p.updatedAt) || Number(p.createdAt)) || Date.now()).toISOString()
-            }));
-            const r = await restUpsertBatch(CLOUD_PRO_TABLE, rows);
-            proOk = Array.isArray(r) ? r.length : 0;
-        }
-    } catch (e) { console.warn('[migrate] 盘源迁移失败：', e.message); }
-    try {
-        if (cuss.length > 0) {
-            const rows = cuss.filter(c => c && c.id).map(c => ({
-                id: String(c.id),
-                owner_id: session.user.id,
-                data: c,
-                updated_at: new Date((Number(c.updatedAt) || Number(c.createdAt)) || Date.now()).toISOString()
-            }));
-            const r = await restUpsertBatch(CLOUD_CUS_TABLE, rows);
-            cusOk = Array.isArray(r) ? r.length : 0;
-        }
-    } catch (e) { console.warn('[migrate] 客源迁移失败：', e.message); }
-    localStorage.setItem(markerKey, '1');
-    try { localStorage.setItem(CLOUD_CUS_CACHE, JSON.stringify({ ts: Date.now(), migrated: true })); } catch (e) {}
-    toast('✅ 迁移完成（盘源' + proOk + ' / 客源' + cusOk + '）');
+    toast('⏳ 正在把本地数据迁移到 GitHub…');
+    const ok = await cloudSyncUpload();
+    if (ok) {
+        localStorage.setItem(markerKey, '1');
+        toast('✅ 迁移完成（盘源' + pros.length + ' / 客源' + cuss.length + '）');
+    }
 }
 
 /* =========================================================
@@ -8535,7 +8507,7 @@ function authGetSession() {
         const raw = localStorage.getItem(AUTH_SESSION_KEY);
         if (!raw) return null;
         const s = JSON.parse(raw);
-        if (s && s.access_token && s.user && s.user.id) return s;
+        if (s && s.user && s.user.id && (s.access_token || s.gh)) return s;
     } catch (e) {}
     return null;
 }
@@ -8550,39 +8522,15 @@ function _jwtExp(accessToken) {
     } catch (e) { return 0; }
 }
 /* 确保登录令牌有效：将过期/已过期时用 refresh_token 自动刷新（Supabase token 1小时失效，不刷新则云同步全断） */
+/* GitHub 文件会话不过期；保留此函数以兼容旧调用点 */
 async function authEnsureFreshSession() {
-    const session = authGetSession();
-    if (!session) return null;
-    const exp = _jwtExp(session.access_token);
-    if (exp && exp > Date.now() + 60000) return session;  // 还有效（提前1分钟刷新）
-    try {
-        const cfg = cloudLoadConfig();
-        if (!cfg || !cfg.url || !session.refresh_token) { authClearSession(); updateAuthUI(); return null; }
-        const res = await fetch(cfg.url + '/auth/v1/token?grant_type=refresh_token', {
-            method: 'POST',
-            headers: { 'apikey': cfg.anonKey, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ refresh_token: session.refresh_token })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.access_token) {
-            authClearSession();
-            try { updateAuthUI(); } catch (e) {}
-            return null;
-        }
-        const fresh = {
-            access_token: data.access_token,
-            refresh_token: data.refresh_token || session.refresh_token,
-            user: session.user
-        };
-        authSaveSession(fresh);
-        console.log('[auth] 登录令牌已自动刷新');
-        return fresh;
-    } catch (e) { return session; }
+    return authGetSession();
 }
 function authClearSession() {
     try { localStorage.removeItem(AUTH_SESSION_KEY); } catch (e) {}
 }
 // 注册
+// 注册（GitHub 数据文件：users/<email>.json）
 async function authDoSignup() {
     const email = ((document.getElementById('authEmail') || {}).value || '').trim();
     const password = (document.getElementById('authPassword') || {}).value || '';
@@ -8597,68 +8545,43 @@ async function authDoSignup() {
         if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 密码至少6位'; }
         toast('⚠️ 密码至少6位'); return;
     }
-    const cfg = cloudLoadConfig();
+    if (!ghLoadConfig()) {
+        if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 请先在备份页「高级配置」保存 GitHub 云配置。'; }
+        toast('⚠️ 未配置 GitHub'); return;
+    }
     toast('⏳ 注册中…');
     try {
-        // C4：注册 body 里带 data metadata（Supabase Auth 会自动存 user_metadata）
-        const signupBody = { email, password };
-        // Supabase signup 默认不带 data；先注册，再 update profile
-        const res = await fetch(cfg.url + '/auth/v1/signup', {
-            method: 'POST',
-            headers: { 'apikey': cfg.anonKey, 'Content-Type': 'application/json' },
-            body: JSON.stringify(signupBody)
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-            const msg = (data && data.msg) || (data && data.error_description) || (data && data.message) || JSON.stringify(data).slice(0, 200);
-            if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 注册失败：' + msg; }
-            toast('⚠️ 注册失败'); return;
+        const path = _userFilePath(email);
+        const existing = await ghReadFile(path);
+        if (existing) {
+            if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 该邮箱已注册，请直接登录。'; }
+            toast('⚠️ 该邮箱已注册'); return;
         }
-        let autoLoggedIn = false;
-        // 如果 Supabase 关闭了邮箱验证，会直接返回 access_token
-        if (data.access_token && data.user) {
-            authSaveSession({
-                access_token: data.access_token,
-                refresh_token: data.refresh_token,
-                user: {
-                    id: data.user.id,
-                    email: data.user.email,
-                    avatar: __authPendingAvatar || '',
-                    phone: phone,
-                    nickname: nickname
-                }
-            });
-            autoLoggedIn = true;
-            toast('✅ 注册成功，已自动登录');
-            fetchUserRole().then(() => updateAuthUI()).catch(() => updateAuthUI());
-            updateAutoSyncUI(); startAutoSyncTimer();
-            // C4：注册成功后写入头像/手机号/昵称到 Supabase metadata
-            try {
-                await authUpdateProfile({
-                    avatar: __authPendingAvatar || '',
-                    phone: phone,
-                    nickname: nickname
-                });
-            } catch (e) { console.warn('[auth] 更新资料失败：', e.message); }
-        } else {
-            toast('✅ 注册成功，请用邮箱密码登录');
-        }
-        // 清空暂存头像
+        const salt = await _pwSalt();
+        const iter = GH_ITER;
+        const ph = await _pwHash(password, salt, iter);
+        const key = await _pwKey(password, salt, iter, 'encrypt');
+        const enc = await _ghEncrypt(JSON.stringify({ customers: [] }), key);
+        const file = { v: 1, salt, iter, ph, role: 'user', nickname, avatar: __authPendingAvatar || '', phone, data: enc };
+        await ghWriteFile(path, file, null);
+        // 自动登录
+        await _storeCryptoKey(password, salt, iter);
+        authSaveSession({ gh: true, user: { id: _emailFileKey(email), email, avatar: file.avatar, phone, nickname, role: 'user' } });
+        localStorage.setItem(AUTH_ROLE_KEY, 'user');
         __authPendingAvatar = '';
+        toast('✅ 注册成功，已自动登录');
         renderAuthCard(); renderBackupStat(); renderHeaderUser();
-        if (autoLoggedIn) {
-            // C5：首次登录迁移本地老数据 → 云端
-            cloudMigrateLocalIfNeeded().then(() => {
-                // 迁移后再从聚合桶强制拉取完整数据（盘源+客源），确保登录后数据完整显示
-                return cloudPullAndApplyIfNewer(true);
-            }).catch(() => {});
-        }
+        updateAuthUI();
+        updateAutoSyncUI(); startAutoSyncTimer();
+        // 首次登录：把本地数据迁移到 GitHub
+        cloudMigrateLocalIfNeeded().then(() => cloudPullAndApplyIfNewer(true)).catch(() => {});
     } catch (e) {
-        if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 网络异常：' + (e && e.message); }
-        toast('⚠️ 网络异常');
+        if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 注册失败：' + (e && e.message); }
+        toast('⚠️ 注册失败');
     }
 }
 // 登录
+// 登录（GitHub 数据文件认证）
 async function authDoSignin() {
     const email = ((document.getElementById('authEmail') || {}).value || '').trim();
     const password = (document.getElementById('authPassword') || {}).value || '';
@@ -8667,64 +8590,58 @@ async function authDoSignin() {
         if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 请填写邮箱和密码'; }
         toast('⚠️ 请填写邮箱和密码'); return;
     }
-    const cfg = cloudLoadConfig();
+    if (!ghLoadConfig()) {
+        if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 请先在备份页「高级配置」保存 GitHub 云配置。'; }
+        toast('⚠️ 未配置 GitHub'); return;
+    }
     toast('⏳ 登录中…');
     try {
-        const res = await fetch(cfg.url + '/auth/v1/token?grant_type=password', {
-            method: 'POST',
-            headers: { 'apikey': cfg.anonKey, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-            const msg = (data && data.error_description) || (data && data.msg) || (data && data.message) || JSON.stringify(data).slice(0, 200);
-            if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 登录失败：' + msg; }
-            toast('⚠️ 登录失败'); return;
+        const path = _userFilePath(email);
+        const rec = await ghReadFile(path);
+        if (!rec || !rec.data) {
+            if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 该邮箱未注册。'; }
+            toast('⚠️ 该邮箱未注册'); return;
         }
-        if (data.access_token && data.user) {
-            const meta = (data.user && data.user.user_metadata) ? data.user.user_metadata : {};
-            authSaveSession({
-                access_token: data.access_token,
-                refresh_token: data.refresh_token,
-                user: {
-                    id: data.user.id,
-                    email: data.user.email,
-                    avatar: (meta && meta.avatar) || '',
-                    phone: (meta && meta.phone) || '',
-                    nickname: (meta && meta.nickname) || ''
-                }
-            });
-            // 清空暂存头像
-            __authPendingAvatar = '';
-            toast('✅ 登录成功，数据已绑定到此账号');
-            renderAuthCard(); renderBackupStat(); renderHeaderUser();
-            // 获取用户角色（管理员/普通用户）并更新UI
-            fetchUserRole().then(() => updateAuthUI()).catch(() => updateAuthUI());
-            updateAutoSyncUI(); startAutoSyncTimer();
-            // C5：迁移 + 云端同步（fire-and-forget）
-            // 登录后从聚合桶强制拉取完整数据（盘源+客源+标签），保证登录即显示全部数据
-            cloudMigrateLocalIfNeeded().then(() => cloudPullAndApplyIfNewer(true)).catch(() => {});
+        const f = rec.data;
+        const iter = Number(f.iter) || GH_ITER;
+        const ph = await _pwHash(password, f.salt, iter);
+        if (ph !== f.ph) {
+            if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 密码错误，请重试。'; }
+            toast('⚠️ 密码错误'); return;
         }
+        // 派生加密密钥（用于加解密客源），不保存明文密码
+        await _storeCryptoKey(password, f.salt, iter);
+        // 解密云端客源写入本地
+        let customers = [];
+        try {
+            const key = await _loadCryptoKey();
+            if (key && f.data && f.data.iv) {
+                const plain = await _ghDecrypt(f.data, key);
+                const obj = JSON.parse(plain);
+                if (obj && Array.isArray(obj.customers)) customers = obj.customers;
+            }
+        } catch (e) { console.warn('[auth] 客源解密失败：', e.message); }
+        localStorage.setItem(CUS_STORAGE, JSON.stringify(customers));
+        authSaveSession({ gh: true, user: { id: _emailFileKey(email), email, avatar: f.avatar || '', phone: f.phone || '', nickname: f.nickname || '', role: f.role || 'user' } });
+        localStorage.setItem(AUTH_ROLE_KEY, f.role || 'user');
+        __authPendingAvatar = '';
+        toast('✅ 登录成功，数据已绑定到此账号');
+        renderAuthCard(); renderBackupStat(); renderHeaderUser();
+        fetchUserRole().then(() => updateAuthUI()).catch(() => updateAuthUI());
+        updateAutoSyncUI(); startAutoSyncTimer();
+        cloudMigrateLocalIfNeeded().then(() => cloudPullAndApplyIfNewer(true)).catch(() => {});
     } catch (e) {
-        if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 网络异常：' + (e && e.message); }
-        toast('⚠️ 网络异常');
+        if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 登录异常：' + (e && e.message); }
+        toast('⚠️ 登录异常');
     }
 }
 // 退出登录
+// 退出登录（本地清除会话与派生密钥）
 async function authDoLogout() {
-    const session = authGetSession();
-    if (session) {
-        const cfg = cloudLoadConfig();
-        try {
-            await fetch(cfg.url + '/auth/v1/logout', {
-                method: 'POST',
-                headers: { 'apikey': cfg.anonKey, 'Authorization': 'Bearer ' + session.access_token }
-            });
-        } catch (e) {}
-    }
     authClearSession();
-        localStorage.removeItem(AUTH_ROLE_KEY);
-        updateAuthUI();
+    localStorage.removeItem(AUTH_ROLE_KEY);
+    try { localStorage.removeItem(GH_CKEY); } catch (e) {}
+    updateAuthUI();
     toast('已退出登录');
     renderAuthCard(); renderBackupStat(); renderHeaderUser();
 }
@@ -8851,8 +8768,8 @@ function renderBackupStat() {
     const lastCloud = localStorage.getItem(CLOUD_LAST_SYNC_KEY);
     let syncErr = null;
     try { syncErr = JSON.parse(localStorage.getItem('re_cloud_sync_err') || 'null'); } catch (e) {}
-    const cfg = cloudLoadConfig();
-    const cfgOk = !!(cfg && cfg.url && cfg.anonKey && cfg.userKey);
+    const cfg = ghLoadConfig();
+    const cfgOk = !!(cfg && cfg.owner && cfg.repo && cfg.token);
     const session = (typeof authGetSession === 'function') ? authGetSession() : null;
     const authStatus = session ? ('已登录：' + (session.user.email || '-')) : '未登录';
     host.innerHTML = `
@@ -8864,18 +8781,14 @@ function renderBackupStat() {
         <div class="row"><span class="k">总占用</span><span class="v">${fmtBytes(totalBytes)}</span></div>
         <div class="row"><span class="k">上次本机备份</span><span class="v">${lastExport ? timeAgo(Number(lastExport)) : '从未备份'}</span></div>
         <div class="row"><span class="k">当前账号</span><span class="v">${authStatus}</span></div>
-        <div class="row"><span class="k">Supabase 云备份</span><span class="v">${cfgOk ? '已配置' : '未配置'}</span></div>
+        <div class="row"><span class="k">GitHub 云备份</span><span class="v">${cfgOk ? '已配置（' + cfg.owner + '/' + cfg.repo + '）' : '未配置'}</span></div>
         <div class="row"><span class="k">上次云同步</span><span class="v">${syncErr ? ('⚠️ 失败：' + syncErr.msg) : (lastCloud ? timeAgo(Number(lastCloud)) : '从未同步')}</span></div>
     `;
     // 回填配置到输入框
     if (cfg) {
-        const u = document.getElementById('sbUrl'); if (u && !u.value) u.value = cfg.url || '';
-        const k = document.getElementById('sbKey'); if (k && !k.value) k.value = cfg.anonKey || '';
-        const uk = document.getElementById('sbUserKey');
-        if (uk && (!uk.value || cfg.isDefault)) {
-            // 首次渲染时把自动生成的默认 user_key 显示出来；用户已手动修改过则保留用户的
-            uk.value = cfg.userKey || '';
-        }
+        const o = document.getElementById('ghOwner'); if (o && !o.value) o.value = cfg.owner || '';
+        const r = document.getElementById('ghRepo'); if (r && !r.value) r.value = cfg.repo || '';
+        const t = document.getElementById('ghToken'); if (t && !t.value) t.value = cfg.token || '';
     }
 }
 
@@ -9044,40 +8957,29 @@ document.addEventListener('keydown', function (e) {
  * force=true 时强制覆盖本地（登录/注册后使用，确保盘源+客源完整显示） */
 async function cloudPullAndApplyIfNewer(force) {
     try {
-        const cfg = cloudLoadConfig();
-        if (!cfg || !cfg.url || !cfg.anonKey || !cfg.userKey) return;
-        // 省流量：第一步只查 updated_at（几十字节），云端确实比本地新才拉全量 payload
-        const head = await fetch(cfg.url + '/rest/v1/' + CLOUD_TABLE + '?user_key=eq.' + encodeURIComponent(cfg.userKey) + '&select=updated_at&limit=1', {
-            method: 'GET',
-            headers: { 'apikey': cfg.anonKey, 'Authorization': 'Bearer ' + cfg.anonKey }
-        }).then(r => r.ok ? r.json() : []).catch(() => []);
-        if (!Array.isArray(head) || head.length === 0) return;
+        const cfg = ghLoadConfig();
+        if (!cfg) return;
+        // 第一步：轻量查 public.json 最新 commit（几十字节），内容有更新才拉全量
+        const head = await ghLatestCommit('public.json');
+        if (!head) return;
+        const localTs = Number(localStorage.getItem(CLOUD_LAST_SYNC_KEY) || 0);
         if (!force) {
-            const cloudTs = head[0].updated_at ? new Date(head[0].updated_at).getTime() : 0;
-            const localTs = Number(localStorage.getItem(CLOUD_LAST_SYNC_KEY) || 0);
+            const cloudTs = head.date ? new Date(head.date).getTime() : 0;
             if (cloudTs && localTs && cloudTs <= localTs) return; // 本地已是最新
         }
-        const rows = await fetch(cfg.url + '/rest/v1/' + CLOUD_TABLE + '?user_key=eq.' + encodeURIComponent(cfg.userKey) + '&select=payload,updated_at&limit=1', {
-            method: 'GET',
-            headers: { 'apikey': cfg.anonKey, 'Authorization': 'Bearer ' + cfg.anonKey }
-        }).then(r => r.ok ? r.json() : []).catch(() => []);
-        if (!Array.isArray(rows) || rows.length === 0) return;
-        const payload = rows[0].payload;
-        if (!payload || (!payload[CUS_STORAGE] && !payload[PRO_STORAGE])) return;
-        // 盘源/标签随聚合桶同步；客源按账号隔离（登录态从业务表拉取，不走聚合桶）
-        [PRO_STORAGE, PRO_TAG_STORAGE].forEach(k => {
-            if (payload[k] != null) {
-                const v = typeof payload[k] === 'string' ? payload[k] : JSON.stringify(payload[k]);
-                localStorage.setItem(k, v);
-            }
-        });
-        if (payload[BACKUP_APP_KEY] != null) {
-            const v = typeof payload[BACKUP_APP_KEY] === 'string' ? payload[BACKUP_APP_KEY] : JSON.stringify(payload[BACKUP_APP_KEY]);
-            localStorage.setItem(BACKUP_APP_KEY, v);
+        // 第二步：确实有更新才拉全量
+        const rec = await ghReadFile('public.json');
+        if (!rec || !rec.data) return;
+        const pub = rec.data;
+        if (Array.isArray(pub.properties)) {
+            localStorage.setItem(PRO_STORAGE, JSON.stringify(pub.properties.map(normalizeProperty)));
         }
+        if (Array.isArray(pub.tags)) localStorage.setItem(PRO_TAG_STORAGE, JSON.stringify(pub.tags));
+        if (pub.meta != null) localStorage.setItem(BACKUP_APP_KEY, JSON.stringify(pub.meta));
         localStorage.setItem(CLOUD_LAST_SYNC_KEY, String(Date.now()));
-        // 登录态：从业务表同步本账号客源
-        if (authGetSession()) { cloudPullMyCustomers(); }
+        // 登录态：从 GitHub 拉本账号客源
+        const session = authGetSession();
+        if (session && session.user && session.user.email) { await cloudPullMyCustomers(); }
         updateAutoSyncUI && updateAutoSyncUI();
         renderCusTagChips && renderCusTagChips();
         renderProTagChips && renderProTagChips();
@@ -9088,39 +8990,47 @@ async function cloudPullAndApplyIfNewer(force) {
         renderProTagFilter && renderProTagFilter();
         renderSelectedFilterBar && renderSelectedFilterBar();
         renderBackupStat && renderBackupStat();
-        console.log('[cloudSync] 已从云端同步本地数据');
-    } catch (e) {}
+        console.log('[ghSync] 已从 GitHub 同步本地数据');
+    } catch (e) { console.warn('[ghSync] 拉取失败：', e && e.message); }
 }
 
 /* 页面加载：更新权限UI（未登录隐藏客源tab） */
 updateAuthUI();
 /* 页面加载：初始化自动同步开关UI + 启动定时器 */
 /* URL hash 自动配置：#sb=url|anonKey|userKey 打开即自动配置 */
+/* URL hash 自动配置：#gh=owner|repo|token 打开即自动配置 */
 (function autoConfigFromUrl() {
     try {
         const hash = window.location.hash || '';
-        const m = hash.match(/sb=([^&]+)/);
+        const m = hash.match(/gh=([^&]+)/);
         if (!m) return;
         const parts = decodeURIComponent(m[1]).split('|');
         if (parts.length >= 2) {
-            const u = document.getElementById('sbUrl');
-            const k = document.getElementById('sbKey');
-            const uk = document.getElementById('sbUserKey');
-            if (u) u.value = parts[0];
-            if (k) k.value = parts[1];
-            if (uk && parts[2]) uk.value = parts[2];
+            const o = document.getElementById('ghOwner');
+            const r = document.getElementById('ghRepo');
+            const t = document.getElementById('ghToken');
+            if (o) o.value = parts[0];
+            if (r) r.value = parts[1];
+            if (t && parts[2]) t.value = parts[2];
             if (typeof cloudSaveConfig === 'function') cloudSaveConfig();
-            console.log('[autoConfig] 已从URL自动配置Supabase');
+            console.log('[autoConfig] 已从URL自动配置GitHub');
         }
     } catch (e) { console.warn('[autoConfig] 失败:', e); }
 })();
 
 (function autoCloudSyncOnLoad() {
     updateAutoSyncUI();
+    // 首次打开：输入框已预填仓库信息 → 若三项齐全自动保存，保证任何设备打开即同步
+    try {
+        const o = document.getElementById('ghOwner');
+        const r = document.getElementById('ghRepo');
+        const t = document.getElementById('ghToken');
+        if (o && o.value && r && r.value && t && t.value && !ghLoadConfig()) ghSaveConfig();
+    } catch (e) {}
     // 打开页面自动同步（无需登录）：
     //   1) 本地有数据才先上传（防丢本地新数据，同时避免空数据覆盖云端）
     //   2) 无论是否有本地数据，都强制从云端拉取覆盖，保证多设备打开即实时一致
-    if (isAutoSyncEnabled()) {
+    if (isAutoSyncEnabled() && ghLoadConfig()) {
         (async () => {
             try {
                 let hasLocal = false;
@@ -9130,7 +9040,7 @@ updateAuthUI();
                     hasLocal = (Array.isArray(pl) && pl.length > 0) || (Array.isArray(cl) && cl.length > 0);
                 } catch (e) {}
                 if (hasLocal) {
-                    try { await cloudSyncNow(); } catch (e) {}
+                    try { await cloudSyncUpload(); } catch (e) {}
                 }
             } catch (e) {}
             try { await cloudPullAndApplyIfNewer(true); } catch (e) {}
