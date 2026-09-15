@@ -7905,7 +7905,7 @@ async function ghApi(method, path, body) {
     if (!cfg || !cfg.token) throw new Error('未配置 GitHub');
     const url = 'https://api.github.com/' + path;
     const headers = { 'Authorization': 'token ' + cfg.token, 'Accept': 'application/vnd.github+json', 'User-Agent': 'fangchan-helper' };
-    const opts = { method, headers };
+    const opts = { method, headers, cache: 'no-store' };
     if (body !== undefined) { opts.body = JSON.stringify(body); headers['Content-Type'] = 'application/json'; }
     const res = await fetch(url, opts);
     if (!res.ok) {
@@ -7929,17 +7929,25 @@ async function ghReadFile(path) {
         }
         const txt = await res.text();
         const data = JSON.parse(txt);
-        // 拿当前 sha（供写入时用）
+        // 拿当前 sha（供写入时用）——用轻量 git tree API，避免大文件 contents 缓存返回 raw 内容
         let sha = null;
-        try {
-            const meta = await ghApi('GET', 'repos/' + ghRepoFull() + '/contents/' + path);
-            sha = (meta && meta.sha) || null;
-        } catch (e) { sha = null; }
+        try { sha = await ghGetFileSha(path); } catch (e) { sha = null; }
         return { data: data, sha: sha };
     } catch (e) {
         if (String(e.message).includes('404')) return null;
         throw e;
     }
+}
+/* 轻量拿文件 blob sha：最新 commit → git tree，几 KB 响应，不受大文件 contents 缓存影响 */
+async function ghGetFileSha(path) {
+    try {
+        const commits = await ghApi('GET', 'repos/' + ghRepoFull() + '/commits?path=' + encodeURIComponent(path) + '&per_page=1');
+        if (!commits || !commits.length || !commits[0].sha) return null;
+        const tree = await ghApi('GET', 'repos/' + ghRepoFull() + '/git/trees/' + commits[0].sha + '?recursive=1');
+        if (!tree || !Array.isArray(tree.tree)) return null;
+        for (const t of tree.tree) { if (t.path === path) return t.sha; }
+        return null;
+    } catch (e) { console.warn('[ghSync] 获取 sha 失败：', e && e.message); return null; }
 }
 async function ghWriteFile(path, data, sha) {
     const content = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
