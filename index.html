@@ -8063,6 +8063,20 @@ function _emailFileKey(email) {
     return String(email || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown';
 }
 function _userFilePath(email) { return GH_DIR + '/' + _emailFileKey(email) + '.json'; }
+/* 账号数据文件（含房源/客源/标签，可能较大）：与元数据文件分离，登录校验只下载小文件 */
+function _userDataPath(email) { return GH_DIR + '/' + _emailFileKey(email) + '-data.json'; }
+/* 读账号数据：优先数据文件，兼容旧版（数据在元数据文件里） */
+async function _readUserData(email) {
+    const key = await _loadCryptoKey();
+    if (!key) return null;
+    let rec = await ghReadFile(_userDataPath(email));
+    if (rec && rec.data && rec.data.data && rec.data.data.iv) return rec;
+    rec = await ghReadFile(_userFilePath(email));
+    if (rec && rec.data && rec.data.data && rec.data.data.iv) return rec;
+    return null;
+}
+/* 写账号数据文件 */
+async function _writeUserData(email, f, sha) { return ghWriteFile(_userDataPath(email), f, sha); }
 
 
 function cloudLoadConfig() {
@@ -8112,10 +8126,10 @@ async function cloudSyncUpload() {
             __cloudSyncLastError = '';
             return false;
         }
-        const rec = await ghReadFile(_userFilePath(session.user.email));
-        if (!rec || !rec.data) { __cloudSyncLastError = '账号文件读取失败'; return false; }
         const key = await _loadCryptoKey();
         if (!key) { __cloudSyncLastError = '加密密钥不可用，请重新登录'; return false; }
+        const rec = await _readUserData(session.user.email);
+        if (!rec || !rec.data) { __cloudSyncLastError = '账号数据读取失败'; return false; }
         const f = rec.data;
         // 防误覆盖保护：云端已有而本地为空时保留云端对应部分
         let cloud = { customers: [], properties: [], tags: [] };
@@ -8131,7 +8145,7 @@ async function cloudSyncUpload() {
             tags: (tags && tags.length) ? tags : (cloud.tags || [])
         };
         f.data = await _ghEncrypt(JSON.stringify(payload), key);
-        await ghWriteFile(_userFilePath(session.user.email), f, rec.sha);
+        await _writeUserData(session.user.email, f, rec.sha);
         localStorage.setItem(CLOUD_LAST_SYNC_KEY, String(Date.now()));
         try {
             const hashSrc2 = JSON.stringify({ props: payload.properties, cus: payload.customers, tags: payload.tags }) + '|' + session.user.email;
@@ -8214,16 +8228,16 @@ async function cloudRestore() {
     toast('⏳ 正在从 GitHub 拉取...');
     try {
         const session = authGetSession();
-        const rec = await ghReadFile(_userFilePath(session.user.email));
-        if (!rec || !rec.data) {
-            if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 该账号还没有云端备份数据。请先在有数据的设备上登录并点「立即同步」。'; }
-            toast('⚠️ 云端无备份');
-            return;
-        }
         const key = await _loadCryptoKey();
         if (!key) {
             if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 加密密钥不可用，请退出后重新登录。'; }
             toast('⚠️ 密钥不可用'); return;
+        }
+        const rec = await _readUserData(session.user.email);
+        if (!rec || !rec.data) {
+            if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 该账号还没有云端备份数据。请先在有数据的设备上登录并点「立即同步」。'; }
+            toast('⚠️ 云端无备份');
+            return;
         }
         let obj = { customers: [], properties: [], tags: [] };
         if (rec.data.data && rec.data.data.iv && rec.data.data.ct) {
@@ -8430,7 +8444,7 @@ async function cloudPullMyCustomers() {
     const session = authGetSession();
     if (!session || !session.user || !session.user.email) return;
     try {
-        const rec = await ghReadFile(_userFilePath(session.user.email));
+        const rec = await _readUserData(session.user.email);
         if (!rec || !rec.data) return;
         const f = rec.data;
         let obj = { customers: [], properties: [], tags: [] };
@@ -8444,15 +8458,40 @@ async function cloudPullMyCustomers() {
                 } catch (e) { console.warn('[ghSync] 账号数据解密失败：', e && e.message); }
             }
         }
-        const customers = Array.isArray(obj.customers) ? obj.customers : [];
-        const properties = Array.isArray(obj.properties) ? obj.properties : [];
-        const tags = Array.isArray(obj.tags) ? obj.tags : [];
-        if (customers.length) {
-            localStorage.setItem(CUS_STORAGE, JSON.stringify(customers));
-            try { localStorage.setItem(CLOUD_CUS_CACHE, JSON.stringify({ ts: Date.now(), items: customers.length, cloudCnt: customers.length })); } catch (e) {}
+        const cloudCus = Array.isArray(obj.customers) ? obj.customers : [];
+        const cloudProps = Array.isArray(obj.properties) ? obj.properties : [];
+        const cloudTags = Array.isArray(obj.tags) ? obj.tags : [];
+        const localCus = loadCustomers() || [];
+        const localProps = loadProperties() || [];
+        const localTags = loadProTags() || [];
+        // 合并（防丢）：云端 + 本地按 id union；云端空本地有则保留本地
+        let customers = cloudCus;
+        if (cloudCus.length || localCus.length) {
+            const map = {};
+            (cloudCus || []).forEach(c => { if (c && (c.id || c._id)) map[c.id || c._id] = c; });
+            (localCus || []).forEach(c => { if (c && (c.id || c._id)) map[c.id || c._id] = c; });
+            customers = Object.values(map);
+            if (!customers.length) customers = cloudCus.length ? cloudCus : localCus;
         }
-        if (properties.length) localStorage.setItem(PRO_STORAGE, JSON.stringify(properties.map(normalizeProperty)));
-        if (tags.length) localStorage.setItem(PRO_TAG_STORAGE, JSON.stringify(tags));
+        let properties = cloudProps;
+        if (cloudProps.length || localProps.length) {
+            const pmap = {};
+            (cloudProps || []).forEach(p => { if (p && (p.id || p._id)) pmap[p.id || p._id] = p; });
+            (localProps || []).forEach(p => { if (p && (p.id || p._id)) pmap[p.id || p._id] = p; });
+            properties = Object.values(pmap);
+            if (!properties.length) properties = cloudProps.length ? cloudProps : localProps;
+        }
+        let tags = cloudTags;
+        if (cloudTags.length || localTags.length) {
+            const tset = [];
+            (cloudTags || []).forEach(t => { if (t && tset.indexOf(t) < 0) tset.push(t); });
+            (localTags || []).forEach(t => { if (t && tset.indexOf(t) < 0) tset.push(t); });
+            tags = tset;
+        }
+        localStorage.setItem(CUS_STORAGE, JSON.stringify(customers));
+        try { localStorage.setItem(CLOUD_CUS_CACHE, JSON.stringify({ ts: Date.now(), items: customers.length, cloudCnt: customers.length })); } catch (e) {}
+        localStorage.setItem(PRO_STORAGE, JSON.stringify(properties.map(function (p) { try { return normalizeProperty(p); } catch (e) { return p; } })));
+        localStorage.setItem(PRO_TAG_STORAGE, JSON.stringify(tags));
         try { renderCustomerList && renderCustomerList(); } catch (e) {}
         try { renderCusTagChips && renderCusTagChips(); } catch (e) {}
         try { renderPropertyList && renderPropertyList(); } catch (e) {}
@@ -8473,10 +8512,10 @@ async function cloudPushMyCustomers() {
         const cus = loadCustomers() || [];
         const props = loadProperties() || [];
         const tags = loadProTags() || [];
-        const rec = await ghReadFile(_userFilePath(session.user.email));
-        if (!rec || !rec.data) return;
         const key = await _loadCryptoKey();
         if (!key) return;
+        const rec = await _readUserData(session.user.email);
+        if (!rec || !rec.data) return;
         const f = rec.data;
         // 防误覆盖保护：云端已有而本地为空时保留云端对应部分
         let cloud = { customers: [], properties: [], tags: [] };
@@ -8492,7 +8531,7 @@ async function cloudPushMyCustomers() {
             tags: (tags && tags.length) ? tags : (cloud.tags || [])
         };
         f.data = await _ghEncrypt(JSON.stringify(payload), key);
-        await ghWriteFile(_userFilePath(session.user.email), f, rec.sha);
+        await _writeUserData(session.user.email, f, rec.sha);
     } catch (e) { console.warn('[ghSync] 上传账号数据失败：', e.message); }
 }
 
@@ -8677,7 +8716,7 @@ async function authDoSignin() {
         if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 请先在备份页「高级配置」保存 GitHub 云配置。'; }
         toast('⚠️ 未配置 GitHub'); return;
     }
-    toast('⏳ 正在从云端下载数据，请稍候…');
+    toast('⏳ 正在验证账号…');
     try {
         const path = _userFilePath(email);
         const rec = await ghReadFile(path);
@@ -8692,63 +8731,18 @@ async function authDoSignin() {
             if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 密码错误，请重试。'; }
             toast('⚠️ 密码错误'); return;
         }
-        // 派生加密密钥（用于加解密客源），不保存明文密码
+        // 派生加密密钥（用于加解密数据），不保存明文密码
         await _storeCryptoKey(password, f.salt, iter);
-        // 解密云端账号数据写入本地（数据保护：云端为空但本地有数据时保留本地并上传，绝不静默清空本地）
-        let cloudObj = { customers: [], properties: [], tags: [] };
-        try {
-            const key = await _loadCryptoKey();
-            if (key && f.data && f.data.iv) {
-                const plain = await _ghDecrypt(f.data, key);
-                const obj = JSON.parse(plain);
-                if (obj && typeof obj === 'object') cloudObj = obj;
-            }
-        } catch (e) { console.warn('[auth] 账号数据解密失败：', e.message); }
-        const cloudCus = Array.isArray(cloudObj.customers) ? cloudObj.customers : [];
-        const cloudProps = Array.isArray(cloudObj.properties) ? cloudObj.properties : [];
-        const cloudTags = Array.isArray(cloudObj.tags) ? cloudObj.tags : [];
-        const localCus = (loadCustomers && loadCustomers()) || [];
-        const localProps = (loadProperties && loadProperties()) || [];
-        const localTags = (loadProTags && loadProTags()) || [];
-        // 客源合并（云端与本地按 id 合并，不丢任何一边）
-        let customers = cloudCus;
-        if (cloudCus.length) {
-            const map = {};
-            (localCus || []).forEach(c => { if (c && (c.id || c._id)) map[c.id || c._id] = c; });
-            cloudCus.forEach(c => { if (c && (c.id || c._id)) map[c.id || c._id] = c; });
-            customers = Object.values(map);
-        } else if (localCus && localCus.length) {
-            customers = localCus;
-        }
-        // 房源合并（按 id）
-        let properties = cloudProps;
-        if (cloudProps.length) {
-            const pmap = {};
-            (localProps || []).forEach(p => { if (p && (p.id || p._id)) pmap[p.id || p._id] = p; });
-            cloudProps.forEach(p => { if (p && (p.id || p._id)) pmap[p.id || p._id] = p; });
-            properties = Object.values(pmap);
-        } else if (localProps && localProps.length) {
-            properties = localProps;
-        }
-        // 标签合并（去重）
-        let tags = cloudTags;
-        if (cloudTags.length || localTags.length) {
-            const tset = [];
-            (cloudTags || []).forEach(t => { if (t && tset.indexOf(t) < 0) tset.push(t); });
-            (localTags || []).forEach(t => { if (t && tset.indexOf(t) < 0) tset.push(t); });
-            tags = tset;
-        }
-        localStorage.setItem(CUS_STORAGE, JSON.stringify(customers));
-        localStorage.setItem(PRO_STORAGE, JSON.stringify(properties.map(function (p) { try { return normalizeProperty(p); } catch (e) { return p; } })));
-        localStorage.setItem(PRO_TAG_STORAGE, JSON.stringify(tags));
         authSaveSession({ gh: true, user: { id: _emailFileKey(email), email, avatar: f.avatar || '', phone: f.phone || '', nickname: f.nickname || '', role: f.role || 'user' } });
         localStorage.setItem(AUTH_ROLE_KEY, f.role || 'user');
         __authPendingAvatar = '';
-        toast('✅ 登录成功，数据已绑定到此账号');
+        toast('✅ 登录成功，正在同步云端数据…');
         renderAuthCard(); renderBackupStat(); renderHeaderUser();
         fetchUserRole().then(() => updateAuthUI()).catch(() => updateAuthUI());
         updateAutoSyncUI(); startAutoSyncTimer();
+        // 后台拉取本账号云端数据（数据文件较大，不阻塞登录）
         cloudMigrateLocalIfNeeded().then(() => cloudPullAndApplyIfNewer(true)).catch(() => {});
+        cloudPullAndApplyIfNewer(true);
     } catch (e) {
         if (hint) { hint.style.display = 'block'; hint.textContent = '⚠️ 登录异常：' + (e && e.message); }
         toast('⚠️ 登录异常');
