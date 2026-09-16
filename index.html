@@ -7738,6 +7738,7 @@ const BACKUP_APP_KEY = 're_app_meta_v1';  // 应用元信息（主题等，可�
 const CLOUD_CONFIG_KEY = 're_cloud_config_v1';
 const CLOUD_LAST_SYNC_KEY = 're_last_cloud_sync_at';
 const CLOUD_LAST_HASH_KEY = 're_cloud_last_hash_v1';
+const CLOUD_LAST_COMMIT_KEY = 're_cloud_last_commit_v1';
 const AUTO_SYNC_KEY = 're_auto_sync_enabled';
 /* 轻量内容指纹：同一 payload 序列化结果相同 → 判定无变化，跳过同步省流量 */
 function _payloadHash(obj) {
@@ -8474,20 +8475,20 @@ async function cloudPullMyCustomers() {
         const localCus = loadCustomers() || [];
         const localProps = loadProperties() || [];
         const localTags = loadProTags() || [];
-        // 合并（防丢）：云端 + 本地按 id union；云端空本地有则保留本地
+        // 合并（云端权威）：同 id 云端优先覆盖本地；本地独有保留（防丢离线新增）
         let customers = cloudCus;
         if (cloudCus.length || localCus.length) {
             const map = {};
-            (cloudCus || []).forEach(c => { if (c && (c.id || c._id)) map[c.id || c._id] = c; });
             (localCus || []).forEach(c => { if (c && (c.id || c._id)) map[c.id || c._id] = c; });
+            (cloudCus || []).forEach(c => { if (c && (c.id || c._id)) map[c.id || c._id] = c; });
             customers = Object.values(map);
             if (!customers.length) customers = cloudCus.length ? cloudCus : localCus;
         }
         let properties = cloudProps;
         if (cloudProps.length || localProps.length) {
             const pmap = {};
-            (cloudProps || []).forEach(p => { if (p && (p.id || p._id)) pmap[p.id || p._id] = p; });
             (localProps || []).forEach(p => { if (p && (p.id || p._id)) pmap[p.id || p._id] = p; });
+            (cloudProps || []).forEach(p => { if (p && (p.id || p._id)) pmap[p.id || p._id] = p; });
             properties = Object.values(pmap);
             if (!properties.length) properties = cloudProps.length ? cloudProps : localProps;
         }
@@ -9085,14 +9086,19 @@ async function cloudPullAndApplyIfNewer(force) {
         // 账号模式：未登录不拉取云端数据
         const session = authGetSession();
         if (!session || !session.user || !session.user.email) return;
-        const localTs = Number(localStorage.getItem(CLOUD_LAST_SYNC_KEY) || 0);
         if (!force) {
-            const cloudTs = Number(localStorage.getItem(CLOUD_LAST_SYNC_KEY) || 0);
-            if (cloudTs && localTs && cloudTs <= localTs) return; // 本地已是最新
+            // 轻量对比云端数据文件最新 commit（几十字节），有更新才拉全量，省流量
+            const cloudC = await ghLatestCommit(_userDataPath(session.user.email)).catch(() => null);
+            const localC = localStorage.getItem(CLOUD_LAST_COMMIT_KEY) || '';
+            if (cloudC && cloudC.sha && cloudC.sha === localC) return; // 云端无更新
         }
-        // 从本账号用户文件拉全量（房源 + 客源 + 标签）
+        // 从本账号数据文件拉全量（房源 + 客源 + 标签），云端权威合并
         await cloudPullMyCustomers();
         localStorage.setItem(CLOUD_LAST_SYNC_KEY, String(Date.now()));
+        try {
+            const cc = await ghLatestCommit(_userDataPath(session.user.email));
+            if (cc && cc.sha) localStorage.setItem(CLOUD_LAST_COMMIT_KEY, cc.sha);
+        } catch (e) {}
         updateAutoSyncUI && updateAutoSyncUI();
         renderCusTagChips && renderCusTagChips();
         renderProTagChips && renderProTagChips();
@@ -9169,17 +9175,10 @@ updateAuthUI();
     if (isAutoSyncEnabled() && ghLoadConfig() && __session) {
         (async () => {
             try {
-                let hasLocal = false;
-                try {
-                    const pl = JSON.parse(localStorage.getItem(PRO_STORAGE) || '[]');
-                    const cl = JSON.parse(localStorage.getItem(CUS_STORAGE) || '[]');
-                    hasLocal = (Array.isArray(pl) && pl.length > 0) || (Array.isArray(cl) && cl.length > 0);
-                } catch (e) {}
-                if (hasLocal) {
-                    try { await cloudSyncUpload(); } catch (e) {}
-                }
+                // 顺序：先拉取（云端权威合并，旧本地不会覆盖云端新数据）→ 再上传合并结果（本地独有数据补传云端）
+                await cloudPullAndApplyIfNewer(true);
+                try { await cloudSyncUpload(); } catch (e) {}
             } catch (e) {}
-            try { await cloudPullAndApplyIfNewer(true); } catch (e) {}
         })();
     }
     startAutoSyncTimer();
