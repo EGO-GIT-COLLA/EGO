@@ -6226,7 +6226,14 @@ function loadCustomers() {
     catch { return []; }
 }
 function saveCustomers(list) {
-    localStorage.setItem(CUS_STORAGE, JSON.stringify(list));
+    const arr = Array.isArray(list) ? list : [];
+    // 记录被删除的客源 id（墓碑，用于跨设备删除传播）
+    try {
+        const prev = JSON.parse(localStorage.getItem(CUS_STORAGE) || '[]');
+        _markDeleted(prev, arr, 'customers');
+    } catch (e) {}
+    const stamped = arr.map(o => { if (o && typeof o === 'object' && (o.id || o._id)) o._u = Date.now(); return o; });
+    localStorage.setItem(CUS_STORAGE, JSON.stringify(stamped));
     // 客源按账号隔离：登录态同步到本账号业务表（聚合桶不再携带客源）
     if (typeof authGetSession === 'function' && authGetSession() && typeof cloudPushMyCustomers === 'function') {
         cloudPushMyCustomers();
@@ -6939,8 +6946,14 @@ function loadProperties() {
     catch { return []; }
 }
 function saveProperties(list) {
-    const arr = Array.isArray(list) ? list.map(normalizeProperty) : [];
-    localStorage.setItem(PRO_STORAGE, JSON.stringify(arr));
+    const arr = Array.isArray(list) ? list : [];
+    // 记录被删除的房源 id（墓碑，用于跨设备删除传播）
+    try {
+        const prev = JSON.parse(localStorage.getItem(PRO_STORAGE) || '[]');
+        _markDeleted(prev, arr, 'properties');
+    } catch (e) {}
+    const stamped = arr.map(o => { if (o && typeof o === 'object' && (o.id || o._id)) o._u = Date.now(); return normalizeProperty(o); });
+    localStorage.setItem(PRO_STORAGE, JSON.stringify(stamped));
     if (typeof cloudSyncDebounced === 'function') cloudSyncDebounced();
 }
 
@@ -7739,6 +7752,7 @@ const CLOUD_CONFIG_KEY = 're_cloud_config_v1';
 const CLOUD_LAST_SYNC_KEY = 're_last_cloud_sync_at';
 const CLOUD_LAST_HASH_KEY = 're_cloud_last_hash_v1';
 const CLOUD_LAST_COMMIT_KEY = 're_cloud_last_commit_v1';
+const DELETED_IDS_KEY = 're_deleted_ids_v1';
 const AUTO_SYNC_KEY = 're_auto_sync_enabled';
 /* 轻量内容指纹：同一 payload 序列化结果相同 → 判定无变化，跳过同步省流量 */
 function _payloadHash(obj) {
@@ -8097,10 +8111,72 @@ function cloudSaveConfig() {
     ghSaveConfig();
 }
 // 收集当前全量数据为 payload（复用 backupCollect 的结构，补加同步时间戳）
-function cloudCollectPayload() {
-    const data = backupCollect();
-    data.__meta.syncedAt = new Date().toISOString();
-    return data;
+// 按 _u（最后保存时间戳）合并两个数组：同 id 取较新；无 _u 视为 0
+function mergeByNewer(localArr, cloudArr) {
+    const map = {};
+    (cloudArr || []).forEach(function (x) { if (x && (x.id || x._id)) map[x.id || x._id] = x; });
+    (localArr || []).forEach(function (x) {
+        if (!x || !(x.id || x._id)) return;
+        const k = x.id || x._id;
+        const c = map[k];
+        if (!c) map[k] = x;
+        else if ((x._u || 0) >= (c._u || 0)) map[k] = x;
+    });
+    return Object.values(map);
+}
+// hash 计算前剥离 _u（内容指纹，忽略保存时间戳，避免"只改 _u"触发无意义上传）
+function _stripU(arr) {
+    return (arr || []).map(function (x) {
+        if (!x || typeof x !== 'object') return x;
+        const o = Object.assign({}, x); delete o._u; return o;
+    });
+}
+// ---- 删除墓碑：跨设备删除传播 ----
+function _readTombstones() {
+    try { return JSON.parse(localStorage.getItem(DELETED_IDS_KEY) || '{}'); } catch (e) { return {}; }
+}
+function _writeTombstones(t) {
+    // 清理 30 天前的墓碑
+    const cut = Date.now() - 30 * 86400000;
+    let changed = false;
+    ['customers', 'properties'].forEach(function (d) {
+        const m = t[d] || {};
+        Object.keys(m).forEach(function (id) { if (m[id] < cut) { delete m[id]; changed = true; } });
+    });
+    try { localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(t)); } catch (e) {}
+    return changed;
+}
+// 记录"从 prev 到 cur 被删除的 id"
+function _markDeleted(prev, cur, domain) {
+    const t = _readTombstones();
+    const curIds = {};
+    (cur || []).forEach(function (x) { if (x && (x.id || x._id)) curIds[x.id || x._id] = 1; });
+    let changed = false;
+    (prev || []).forEach(function (x) {
+        const id = x && (x.id || x._id);
+        if (id && !curIds[id]) {
+            if (!t[domain]) t[domain] = {};
+            if (!t[domain][id]) changed = true;
+            t[domain][id] = Date.now();
+        }
+    });
+    if (changed) _writeTombstones(t);
+}
+// 过滤掉墓碑中的 id（配合云端墓碑，删除跨设备生效）
+function _filterTombstoned(arr, tomb, domain) {
+    const m = (tomb && tomb[domain]) || {};
+    return (arr || []).filter(function (x) {
+        const id = x && (x.id || x._id);
+        return !(id && m[id]);
+    });
+}
+// 墓碑合并：两个墓碑结构取并集（同 id 取较新 ts）
+function mergeTomb(a, b) {
+    const out = {};
+    ['customers', 'properties'].forEach(function (d) {
+        out[d] = Object.assign({}, (a && a[d]) || {}, (b && b[d]) || {});
+    });
+    return out;
 }
 // 上传到 Supabase（upsert）。成功返回 true，失败返回 false。
 // PostgREST upsert 规范：用 POST + Prefer: resolution=merge-duplicates，
@@ -8108,8 +8184,16 @@ function cloudCollectPayload() {
 let __cloudSyncLastError = '';
 async function cloudSyncUpload() {
     if (__cloudSyncInFlight) {
-        __cloudSyncLastError = '上一次同步尚未完成，请稍候再试';
-        return false;
+        // 等待进行中的上传完成（最多 90s），保证"保存的修改"最终上传，不被打开页面的自动同步跳过
+        let waited = 0;
+        while (__cloudSyncInFlight && waited < 90000) {
+            await new Promise(function (r) { setTimeout(r, 1000); });
+            waited += 1000;
+        }
+        if (__cloudSyncInFlight) {
+            __cloudSyncLastError = '上一次同步超时，请稍后再试';
+            return false;
+        }
     }
     const cfg = ghLoadConfig();
     if (!cfg) return false;
@@ -8121,9 +8205,9 @@ async function cloudSyncUpload() {
         const props = loadProperties() || [];
         const cus = loadCustomers() || [];
         const tags = loadProTags() || [];
-        // ===== 省流量：内容指纹无变化则跳过 =====
+        // ===== 省流量：内容指纹无变化则跳过（指纹剥离 _u，避免"仅时间戳变化"触发无意义上传） =====
         try {
-            const hashSrc = JSON.stringify({ props: props, cus: cus, tags: tags }) + '|' + session.user.email;
+            const hashSrc = JSON.stringify({ props: _stripU(props), cus: _stripU(cus), tags: tags }) + '|' + session.user.email;
             const lastHash = localStorage.getItem(CLOUD_LAST_HASH_KEY) || '';
             const curHash = _payloadHash(hashSrc);
             const hasSynced = !!localStorage.getItem(CLOUD_LAST_SYNC_KEY);
@@ -8150,16 +8234,20 @@ async function cloudSyncUpload() {
                 if (obj && typeof obj === 'object') cloud = obj;
             } catch (e) {}
         }
+        // 合并上传：同 id 取 _u 较新（本地离线修改不丢、不覆盖云端新数据）；本地空保留云端（防误覆盖）
+        // 删除墓碑：被删 id 不复活，跨设备删除生效
+        const tomb = _readTombstones();
         const payload = {
-            customers: (cus && cus.length) ? cus : (cloud.customers || []),
-            properties: (props && props.length) ? props : (cloud.properties || []),
-            tags: (tags && tags.length) ? tags : (cloud.tags || [])
+            customers: _filterTombstoned(mergeByNewer(cus || [], cloud.customers || []), mergeTomb(tomb, cloud._deletedIds || {}), 'customers'),
+            properties: _filterTombstoned(mergeByNewer(props || [], cloud.properties || []), mergeTomb(tomb, cloud._deletedIds || {}), 'properties'),
+            tags: (tags && tags.length) ? tags : (cloud.tags || []),
+            _deletedIds: mergeTomb(tomb, cloud._deletedIds || {})
         };
         f.data = await _ghEncrypt(JSON.stringify(payload), key);
         await _writeUserData(session.user.email, f, rec.sha);
         localStorage.setItem(CLOUD_LAST_SYNC_KEY, String(Date.now()));
         try {
-            const hashSrc2 = JSON.stringify({ props: payload.properties, cus: payload.customers, tags: payload.tags }) + '|' + session.user.email;
+            const hashSrc2 = JSON.stringify({ props: _stripU(payload.properties), cus: _stripU(payload.customers), tags: payload.tags, del: payload._deletedIds }) + '|' + session.user.email;
             localStorage.setItem(CLOUD_LAST_HASH_KEY, _payloadHash(hashSrc2));
         } catch (e) {}
         __cloudSyncLastError = '';
@@ -8184,6 +8272,22 @@ function cloudSyncDebounced() {
     __cloudSyncTimer = setTimeout(() => {
         __cloudSyncTimer = null;
         cloudSyncUpload().then(ok => {
+            if (!ok) {
+                // 上传失败：15s 后自动重试（最多 3 次），保证"保存的数据"最终上传云端
+                let tries = 0;
+                try { tries = Number(sessionStorage.getItem('__ghSyncRetry') || 0); } catch (e) {}
+                if (tries < 3) {
+                    try { sessionStorage.setItem('__ghSyncRetry', String(tries + 1)); } catch (e) {}
+                    setTimeout(() => {
+                        try { sessionStorage.removeItem('__ghSyncRetry'); } catch (e) {}
+                        cloudSyncDebounced();
+                    }, 15000);
+                } else {
+                    try { sessionStorage.removeItem('__ghSyncRetry'); } catch (e) {}
+                }
+            } else {
+                try { sessionStorage.removeItem('__ghSyncRetry'); } catch (e) {}
+            }
             if (ok && document.getElementById('tab-backup')) {
                 renderBackupStat();
             }
@@ -8475,23 +8579,40 @@ async function cloudPullMyCustomers() {
         const localCus = loadCustomers() || [];
         const localProps = loadProperties() || [];
         const localTags = loadProTags() || [];
-        // 合并（云端权威）：同 id 云端优先覆盖本地；本地独有保留（防丢离线新增）
+        // 合并（较新优先）：同 id 取 _u 较新——云端新数据覆盖本地旧，本地离线修改不被云端覆盖
+        // 墓碑应用：任一端的墓碑 id 都从结果中剔除（删除跨设备生效）
+        const tomb = mergeTomb(_readTombstones(), obj._deletedIds || {});
+        _writeTombstones(tomb);
         let customers = cloudCus;
         if (cloudCus.length || localCus.length) {
             const map = {};
-            (localCus || []).forEach(c => { if (c && (c.id || c._id)) map[c.id || c._id] = c; });
             (cloudCus || []).forEach(c => { if (c && (c.id || c._id)) map[c.id || c._id] = c; });
+            (localCus || []).forEach(c => {
+                if (!c || !(c.id || c._id)) return;
+                const k = c.id || c._id;
+                const cc = map[k];
+                if (!cc) map[k] = c;
+                else if ((c._u || 0) > (cc._u || 0)) map[k] = c;
+            });
             customers = Object.values(map);
             if (!customers.length) customers = cloudCus.length ? cloudCus : localCus;
         }
+        customers = _filterTombstoned(customers, tomb, 'customers');
         let properties = cloudProps;
         if (cloudProps.length || localProps.length) {
             const pmap = {};
-            (localProps || []).forEach(p => { if (p && (p.id || p._id)) pmap[p.id || p._id] = p; });
             (cloudProps || []).forEach(p => { if (p && (p.id || p._id)) pmap[p.id || p._id] = p; });
+            (localProps || []).forEach(p => {
+                if (!p || !(p.id || p._id)) return;
+                const k = p.id || p._id;
+                const pp = pmap[k];
+                if (!pp) pmap[k] = p;
+                else if ((p._u || 0) > (pp._u || 0)) pmap[k] = p;
+            });
             properties = Object.values(pmap);
             if (!properties.length) properties = cloudProps.length ? cloudProps : localProps;
         }
+        properties = _filterTombstoned(properties, tomb, 'properties');
         let tags = cloudTags;
         if (cloudTags.length || localTags.length) {
             const tset = [];
@@ -8536,10 +8657,12 @@ async function cloudPushMyCustomers() {
                 if (obj && typeof obj === 'object') cloud = obj;
             } catch (e) {}
         }
+        const tomb = _readTombstones();
         const payload = {
-            customers: (cus && cus.length) ? cus : (cloud.customers || []),
-            properties: (props && props.length) ? props : (cloud.properties || []),
-            tags: (tags && tags.length) ? tags : (cloud.tags || [])
+            customers: _filterTombstoned(mergeByNewer(cus || [], cloud.customers || []), mergeTomb(tomb, cloud._deletedIds || {}), 'customers'),
+            properties: _filterTombstoned(mergeByNewer(props || [], cloud.properties || []), mergeTomb(tomb, cloud._deletedIds || {}), 'properties'),
+            tags: (tags && tags.length) ? tags : (cloud.tags || []),
+            _deletedIds: mergeTomb(tomb, cloud._deletedIds || {})
         };
         f.data = await _ghEncrypt(JSON.stringify(payload), key);
         await _writeUserData(session.user.email, f, rec.sha);
