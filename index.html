@@ -1878,7 +1878,94 @@
                 word-break: break-all;
             }
         }
-    </style>
+    
+    /* ===== 鸿蒙 7 毛玻璃质感（2026-09 新增） ===== */
+    /* ---- 卡片毛玻璃：半透明 + 背景模糊 + 高光边缘 ---- */
+    .card, .sub-card, .result-card {
+        background: var(--card);
+        background: color-mix(in srgb, var(--card) 58%, transparent);
+        -webkit-backdrop-filter: blur(24px) saturate(170%);
+        backdrop-filter: blur(24px) saturate(170%);
+        border-color: color-mix(in srgb, var(--card-border) 72%, transparent);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 20px 60px rgba(0,0,0,0.35);
+    }
+    body[data-theme="light"] .card,
+    body[data-theme="light"] .sub-card,
+    body[data-theme="light"] .result-card {
+        background: rgba(255,255,255,0.62);
+        border-color: rgba(255,255,255,0.78);
+        -webkit-backdrop-filter: blur(22px) saturate(185%);
+        backdrop-filter: blur(22px) saturate(185%);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), 0 10px 30px rgba(15,23,42,0.08);
+    }
+    /* ---- 输入控件玻璃（无内联样式的统一生效） ---- */
+    textarea, select, input[type=text], input[type=email], input[type=password], input[type=tel], input[type=number], input[type=search] {
+        background: color-mix(in srgb, var(--input-bg) 66%, transparent) !important;
+        -webkit-backdrop-filter: blur(12px) saturate(150%) !important;
+        backdrop-filter: blur(12px) saturate(150%) !important;
+        border-color: color-mix(in srgb, var(--input-border) 80%, transparent) !important;
+    }
+    body[data-theme="light"] textarea,
+    body[data-theme="light"] select,
+    body[data-theme="light"] input[type=text],
+    body[data-theme="light"] input[type=email],
+    body[data-theme="light"] input[type=password],
+    body[data-theme="light"] input[type=tel],
+    body[data-theme="light"] input[type=number],
+    body[data-theme="light"] input[type=search] {
+        background: rgba(255,255,255,0.72) !important;
+        border-color: rgba(255,255,255,0.85) !important;
+    }
+    /* ---- 主按钮：金色渐变 + 玻璃高光 ---- */
+    .btn-primary {
+        background: linear-gradient(135deg, rgba(230,195,74,0.92) 0%, rgba(184,134,11,0.92) 100%);
+        border: 1px solid rgba(255,255,255,0.22);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.4), 0 4px 16px rgba(212,175,55,0.28);
+        -webkit-backdrop-filter: blur(10px);
+        backdrop-filter: blur(10px);
+    }
+    /* ---- 次级按钮：毛玻璃底 ---- */
+    .btn-ghost, .btn-danger {
+        background: color-mix(in srgb, var(--card) 50%, transparent);
+        -webkit-backdrop-filter: blur(10px) saturate(150%);
+        backdrop-filter: blur(10px) saturate(150%);
+        border: 1px solid color-mix(in srgb, var(--chip-border) 72%, transparent);
+    }
+    body[data-theme="light"] .btn-ghost,
+    body[data-theme="light"] .btn-danger {
+        background: rgba(255,255,255,0.65);
+        border-color: rgba(255,255,255,0.9);
+    }
+    /* ---- 底部导航：选中项玻璃胶囊 ---- */
+    .tab-btn.active {
+        background: color-mix(in srgb, var(--card) 68%, transparent);
+        -webkit-backdrop-filter: blur(14px) saturate(160%);
+        backdrop-filter: blur(14px) saturate(160%);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 2px 10px rgba(0,0,0,0.18);
+    }
+    body[data-theme="light"] .tab-btn.active {
+        background: rgba(255,255,255,0.72);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,1), 0 2px 8px rgba(15,23,42,0.08);
+    }
+    /* ---- 客源/房源卡片等列表项轻玻璃 ---- */
+    .match-pro-item, .pro-folder, .cus-item, .result-card .result-item {
+        background: color-mix(in srgb, var(--card) 45%, transparent);
+        -webkit-backdrop-filter: blur(14px) saturate(150%);
+        backdrop-filter: blur(14px) saturate(150%);
+        border-color: color-mix(in srgb, var(--card-border) 60%, transparent);
+    }
+    body[data-theme="light"] .match-pro-item,
+    body[data-theme="light"] .pro-folder,
+    body[data-theme="light"] .cus-item,
+    body[data-theme="light"] .result-card .result-item {
+        background: rgba(255,255,255,0.6);
+        border-color: rgba(255,255,255,0.8);
+    }
+    /* ---- 深色主题下背景补一层柔和渐变，让玻璃有层次 ---- */
+    body[data-theme="gold"] { background: linear-gradient(160deg, #16130b 0%, #0a0a0a 55%, #131008 100%); }
+    body[data-theme="gold"] { --bg: linear-gradient(160deg, #16130b 0%, #0a0a0a 55%, #131008 100%); }
+
+</style>
 </head>
 <body>
 <div class="app-shell">
