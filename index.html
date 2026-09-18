@@ -1838,7 +1838,7 @@
 
         /* ========== 移动端适配（窄屏优化） ========== */
         @media (max-width: 480px) {
-            body { padding: 14px 10px calc(150px + env(safe-area-inset-bottom)); } /* 底部给 Tab 栏+安全区留空间 */
+            body { padding: 14px 10px calc(190px + env(safe-area-inset-bottom)); } /* 底部给 Tab 栏+安全区留空间 */
             /* 顶部 Tab 按钮在小屏略缩字，防止 5 个按钮挤压 */
             .tab-btn { font-size: 11px; padding: 8px 2px 7px; }
             .tab-btn::before { font-size: 17px; }
@@ -2014,6 +2014,17 @@
     /* ---- 深色主题下背景补一层柔和渐变，让玻璃有层次 ---- */
     body[data-theme="gold"] { background: linear-gradient(160deg, #16130b 0%, #0a0a0a 55%, #131008 100%); }
     body[data-theme="gold"] { --bg: linear-gradient(160deg, #16130b 0%, #0a0a0a 55%, #131008 100%); }
+
+
+        /* ===== 保存按钮吸附底栏上方，物理上不被遮挡 ===== */
+        #proSubmitBtn, #cusSubmitBtn {
+            position: -webkit-sticky;
+            position: sticky;
+            bottom: calc(86px + env(safe-area-inset-bottom));
+            z-index: 60;
+            margin-top: 16px;
+            box-shadow: 0 10px 28px rgba(212,175,55,0.4), inset 0 1px 0 rgba(255,255,255,0.35);
+        }
 
 </style>
 </head>
@@ -2623,7 +2634,7 @@
                     </div>
                 </div>
 
-                <button type="button" class="btn btn-primary" onclick="submitProperty()">保存盘源</button>
+                <button type="button" class="btn btn-primary" id="proSubmitBtn" onclick="submitProperty()">保存盘源</button>
                 <div class="err" id="proError"></div>
             </div>
             </div>
