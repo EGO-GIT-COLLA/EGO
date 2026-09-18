@@ -330,7 +330,7 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
             background: var(--bg);
             min-height: 100vh;
-            padding: 20px 14px 110px; /* 底部留空给固定的 5 个 Tab 栏 */
+            padding: 20px 14px calc(118px + env(safe-area-inset-bottom)); /* 底部留空给固定 Tab 栏（含安全区） */
             color: var(--text);
             transition: background 0.25s ease, color 0.25s ease;
         }
@@ -1788,7 +1788,7 @@
 
         /* ========== 移动端适配（窄屏优化） ========== */
         @media (max-width: 480px) {
-            body { padding: 14px 10px 104px; } /* 底部给 5 个 Tab 栏留空间 */
+            body { padding: 14px 10px calc(150px + env(safe-area-inset-bottom)); } /* 底部给 Tab 栏+安全区留空间 */
             /* 顶部 Tab 按钮在小屏略缩字，防止 5 个按钮挤压 */
             .tab-btn { font-size: 11px; padding: 8px 2px 7px; }
             .tab-btn::before { font-size: 17px; }
@@ -1854,7 +1854,7 @@
             .app-shell {
                 width: 100%;
                 max-width: 100%;
-                padding: 16px 12px 100px;
+                padding: 16px 12px calc(140px + env(safe-area-inset-bottom));
                 box-sizing: border-box;
             }
             .item-card { border-radius: 12px; }
