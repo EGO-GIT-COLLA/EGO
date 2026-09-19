@@ -287,56 +287,6 @@
         }
         body[data-theme="lavender"] .card { box-shadow: 0 10px 30px rgba(126,87,194,0.08); }
 
-        /* 17. 毛玻璃（iOS 27 / 鸿蒙 7 通透质感） */
-        body[data-theme="glass"] {
-            --bg:
-                radial-gradient(1100px 750px at 8% -8%, rgba(110,165,255,0.42), transparent 60%),
-                radial-gradient(950px 700px at 95% 8%, rgba(196,140,255,0.38), transparent 55%),
-                radial-gradient(900px 900px at 50% 108%, rgba(90,210,210,0.34), transparent 62%),
-                radial-gradient(700px 500px at 80% 70%, rgba(255,170,200,0.28), transparent 60%),
-                linear-gradient(180deg, #e6edfb 0%, #efe9fb 48%, #e2f4f1 100%);
-            --bg-soft: rgba(255,255,255,0.45); --card: #f6f9ff; --card-border: rgba(255,255,255,0.7);
-            --text: #1a2233; --text-sub: #37445e; --text-hint: #64748f; --text-mute: #9aa8c2;
-            --input-bg: rgba(255,255,255,0.6); --input-border: rgba(255,255,255,0.85); --input-focus-bg: rgba(255,255,255,0.85);
-            --chip-bg: rgba(255,255,255,0.45); --chip-border: rgba(255,255,255,0.7); --chip-active: rgba(255,255,255,0.85);
-            --danger-bg: rgba(255,59,48,0.12); --danger-border: rgba(255,59,48,0.35); --danger-text: #d70015;
-            --line: rgba(255,255,255,0.55); --tag-a: #0a84ff; --tag-b: #5e5ce6; --ok: #30d158; --warn: #ff9f0a; --danger: #ff3b30;
-            --accent: #0a84ff;
-        }
-        /* 毛玻璃主题：更透的磨砂层 */
-        body[data-theme="glass"] .card,
-        body[data-theme="glass"] .sub-card,
-        body[data-theme="glass"] .result-card {
-            background: rgba(255,255,255,0.46);
-            border: 1px solid rgba(255,255,255,0.75);
-            -webkit-backdrop-filter: blur(30px) saturate(180%) brightness(1.08);
-            backdrop-filter: blur(30px) saturate(180%) brightness(1.08);
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 18px 50px rgba(80,110,180,0.18);
-        }
-        body[data-theme="glass"] .btn-primary {
-            background: linear-gradient(135deg, rgba(10,132,255,0.92) 0%, rgba(94,92,230,0.92) 100%);
-            border: 1px solid rgba(255,255,255,0.35);
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), 0 8px 24px rgba(10,132,255,0.35);
-            color: #fff;
-        }
-        body[data-theme="glass"] .tab-btn.active {
-            background: rgba(255,255,255,0.62);
-            border: 1px solid rgba(255,255,255,0.85);
-            box-shadow: inset 0 1px 0 rgba(255,255,255,1), 0 4px 14px rgba(80,110,180,0.16);
-        }
-        body[data-theme="glass"] input,
-        body[data-theme="glass"] select,
-        body[data-theme="glass"] textarea {
-            background: rgba(255,255,255,0.6) !important;
-            border: 1px solid rgba(255,255,255,0.85) !important;
-        }
-        body[data-theme="glass"] .match-pro-item,
-        body[data-theme="glass"] .pro-folder,
-        body[data-theme="glass"] .cus-item {
-            background: rgba(255,255,255,0.5);
-            border: 1px solid rgba(255,255,255,0.75);
-        }
-
         /* 主题选择器 */
         .theme-picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 10px 0 6px; }
         /* 皮肤主题折叠 */
@@ -1929,93 +1879,6 @@
             }
         }
     
-    /* ===== 鸿蒙 7 毛玻璃质感（2026-09 新增） ===== */
-    /* ---- 卡片毛玻璃：半透明 + 背景模糊 + 高光边缘 ---- */
-    .card, .sub-card, .result-card {
-        background: var(--card);
-        background: color-mix(in srgb, var(--card) 58%, transparent);
-        -webkit-backdrop-filter: blur(24px) saturate(170%);
-        backdrop-filter: blur(24px) saturate(170%);
-        border-color: color-mix(in srgb, var(--card-border) 72%, transparent);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 20px 60px rgba(0,0,0,0.35);
-    }
-    body[data-theme="light"] .card,
-    body[data-theme="light"] .sub-card,
-    body[data-theme="light"] .result-card {
-        background: rgba(255,255,255,0.62);
-        border-color: rgba(255,255,255,0.78);
-        -webkit-backdrop-filter: blur(22px) saturate(185%);
-        backdrop-filter: blur(22px) saturate(185%);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), 0 10px 30px rgba(15,23,42,0.08);
-    }
-    /* ---- 输入控件玻璃（无内联样式的统一生效） ---- */
-    textarea, select, input[type=text], input[type=email], input[type=password], input[type=tel], input[type=number], input[type=search] {
-        background: color-mix(in srgb, var(--input-bg) 66%, transparent) !important;
-        -webkit-backdrop-filter: blur(12px) saturate(150%) !important;
-        backdrop-filter: blur(12px) saturate(150%) !important;
-        border-color: color-mix(in srgb, var(--input-border) 80%, transparent) !important;
-    }
-    body[data-theme="light"] textarea,
-    body[data-theme="light"] select,
-    body[data-theme="light"] input[type=text],
-    body[data-theme="light"] input[type=email],
-    body[data-theme="light"] input[type=password],
-    body[data-theme="light"] input[type=tel],
-    body[data-theme="light"] input[type=number],
-    body[data-theme="light"] input[type=search] {
-        background: rgba(255,255,255,0.72) !important;
-        border-color: rgba(255,255,255,0.85) !important;
-    }
-    /* ---- 主按钮：金色渐变 + 玻璃高光 ---- */
-    .btn-primary {
-        background: linear-gradient(135deg, rgba(230,195,74,0.92) 0%, rgba(184,134,11,0.92) 100%);
-        border: 1px solid rgba(255,255,255,0.22);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.4), 0 4px 16px rgba(212,175,55,0.28);
-        -webkit-backdrop-filter: blur(10px);
-        backdrop-filter: blur(10px);
-    }
-    /* ---- 次级按钮：毛玻璃底 ---- */
-    .btn-ghost, .btn-danger {
-        background: color-mix(in srgb, var(--card) 50%, transparent);
-        -webkit-backdrop-filter: blur(10px) saturate(150%);
-        backdrop-filter: blur(10px) saturate(150%);
-        border: 1px solid color-mix(in srgb, var(--chip-border) 72%, transparent);
-    }
-    body[data-theme="light"] .btn-ghost,
-    body[data-theme="light"] .btn-danger {
-        background: rgba(255,255,255,0.65);
-        border-color: rgba(255,255,255,0.9);
-    }
-    /* ---- 底部导航：选中项玻璃胶囊 ---- */
-    .tab-btn.active {
-        background: color-mix(in srgb, var(--card) 68%, transparent);
-        -webkit-backdrop-filter: blur(14px) saturate(160%);
-        backdrop-filter: blur(14px) saturate(160%);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 2px 10px rgba(0,0,0,0.18);
-    }
-    body[data-theme="light"] .tab-btn.active {
-        background: rgba(255,255,255,0.72);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,1), 0 2px 8px rgba(15,23,42,0.08);
-    }
-    /* ---- 客源/房源卡片等列表项轻玻璃 ---- */
-    .match-pro-item, .pro-folder, .cus-item, .result-card .result-item {
-        background: color-mix(in srgb, var(--card) 45%, transparent);
-        -webkit-backdrop-filter: blur(14px) saturate(150%);
-        backdrop-filter: blur(14px) saturate(150%);
-        border-color: color-mix(in srgb, var(--card-border) 60%, transparent);
-    }
-    body[data-theme="light"] .match-pro-item,
-    body[data-theme="light"] .pro-folder,
-    body[data-theme="light"] .cus-item,
-    body[data-theme="light"] .result-card .result-item {
-        background: rgba(255,255,255,0.6);
-        border-color: rgba(255,255,255,0.8);
-    }
-    /* ---- 深色主题下背景补一层柔和渐变，让玻璃有层次 ---- */
-    body[data-theme="gold"] { background: linear-gradient(160deg, #16130b 0%, #0a0a0a 55%, #131008 100%); }
-    body[data-theme="gold"] { --bg: linear-gradient(160deg, #16130b 0%, #0a0a0a 55%, #131008 100%); }
-
-
         /* ===== 保存按钮吸附底栏上方，物理上不被遮挡 ===== */
         #proSubmitBtn, #cusSubmitBtn {
             position: -webkit-sticky;
@@ -2695,7 +2558,7 @@
             <div class="sub-card">
                 <details id="themeSection">
                     <summary class="sub-title" style="cursor:pointer;outline:none;margin-bottom:0;">
-                        <span><span>🎨 皮肤主题</span> <span style="font-size:11px;color:var(--text-hint);margin-left:8px;">17套配色</span></span>
+                        <span><span>🎨 皮肤主题</span> <span style="font-size:11px;color:var(--text-hint);margin-left:8px;">16套配色</span></span>
                         <span class="theme-arrow" style="font-size:13px;color:var(--text-hint);">▸</span>
                     </summary>
                     <div class="theme-picker" id="themePicker"></div>
@@ -3444,7 +3307,6 @@ const THEME_LIST = [
     { id: 'ruby',     name: '曜石红', emoji: '💎', colors: ['#1a0a0c', '#220e10', '#ff5252'] },
     { id: 'mint',     name: '薄荷', emoji: '🌿', colors: ['#f2fbf7', '#ffffff', '#00897b'] },
     { id: 'lavender', name: '薰衣草', emoji: '💜', colors: ['#f6f2fc', '#ffffff', '#7e57c2'] },
-    { id: 'glass',   name: '毛玻璃', emoji: '🪟', colors: ['#a8c0ff', '#ffffff', '#0a84ff'] }
 ];
 function getCurrentTheme() {
     return document.body.getAttribute('data-theme') || 'gold';
