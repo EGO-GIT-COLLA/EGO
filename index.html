@@ -1889,6 +1889,29 @@
             box-shadow: 0 10px 28px rgba(212,175,55,0.4), inset 0 1px 0 rgba(255,255,255,0.35);
         }
 
+
+        /* ===== 登录/注册按钮统一 + 跨设备易用性优化 ===== */
+        .btn-secondary {
+            width: 100%;
+            background: var(--accent);
+            color: #fff;
+            font-weight: 600;
+            border: 1px solid transparent;
+        }
+        .btn-secondary:hover { filter: brightness(1.08); transform: translateY(-1px); }
+        /* 登录区：注册/登录两按钮等宽并排、同尺寸 */
+        #authLoggedOut .backup-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        /* 触控友好：所有主按钮最小高度，手机/平板点按更顺手 */
+        .btn { min-height: 46px; }
+        /* 大屏（平板/电脑）：登录卡片限宽居中，输入框不被拉太长 */
+        @media (min-width: 768px) {
+            #authLoggedOut, #authLoggedIn { max-width: 560px; margin-left: auto; margin-right: auto; }
+        }
+
 </style>
 </head>
 <body>
@@ -2607,7 +2630,7 @@
                     </details>
                     <div class="backup-actions" style="margin-top:10px;">
                         <button type="button" class="btn btn-primary" onclick="authDoSignup()">📝 注册</button>
-                        <button type="button" class="btn btn-ghost" style="color:var(--accent);border-color:var(--accent);" onclick="authDoSignin()">🔑 登录</button>
+                        <button type="button" class="btn btn-secondary" onclick="authDoSignin()">🔑 登录</button>
                     </div>
                     <p class="backup-hint" id="authHint" style="display:none;"></p>
                 </div>
