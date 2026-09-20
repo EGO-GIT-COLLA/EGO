@@ -4105,7 +4105,7 @@ function renderGlobalResults() {
                 // 小缩略图：有图显示图，没图显示占位图标
                 const _firstImg = (Array.isArray(p.images) && p.images.length) ? p.images[0] : (p.cover || '');
                 const _thumb = _firstImg
-                    ? `<img data-img-id="${escapeHTML(_firstImg)}" alt="" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0;background:var(--bg-card,#eee);" src="" onerror="this.style.display='none'">`
+                    ? `<img data-img-id="${escapeHTML(_firstImg)}" alt="" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0;background:var(--bg-card,#eee);" onerror="if(this.getAttribute('src'))this.style.display='none'">`
                     : `<span style="width:48px;height:48px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:20px;background:rgba(212,175,55,0.12);color:var(--tag-a,#d4af37);">🏠</span>`;
                 return `<div class="gr-item" style="display:flex;align-items:center;gap:10px;" onclick="gsPreview('property','${p.id}')">
                     ${_thumb}
@@ -4300,7 +4300,7 @@ function _gsImgBlockHtml(imgs, id, type) {
         <img data-img-id="${escapeHTML(cover)}" style="width:100%;height:100%;object-fit:cover;" src="" onerror="this.style.display='none';"></div>`;
     if (others.length === 0) return coverHtml;
     const gridHtml = `<div style="margin-top:8px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;">
-        ${others.slice(0, 7).map((src) => `<img data-img-id="${escapeHTML(src)}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;cursor:zoom-in;background:var(--bg-soft);" src="" onclick="${viewerCall}" onerror="this.style.display='none';">`).join('')}
+        ${others.slice(0, 7).map((src) => `<img data-img-id="${escapeHTML(src)}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;cursor:zoom-in;background:var(--bg-soft);" onclick="${viewerCall}" onerror="if(this.getAttribute('src'))this.style.display='none';">`).join('')}
     </div>${imgs.length > 8 ? `<div style="font-size:12px;color:var(--text-hint);margin-top:6px;">共 ${imgs.length} 张图片，点击上方任意图可左右划浏览全部</div>` : ''}`;
     return coverHtml + gridHtml;
 }
@@ -6752,7 +6752,7 @@ function renderCustomerList() {
         if (imgs.length > 0) window.__imgReg[c.id] = imgs;
         const cover = imgs.length > 0
             ? `<div class="item-cover is-clickable" onclick="event.stopPropagation(); openImgViewerById('${c.id}')">
-                   <img data-img-id="${escapeHTML(imgs[0])}" alt="${escapeHTML(c.name)}" decoding="async" loading="lazy" src="" onerror="this.style.display='none'">
+                   <img data-img-id="${escapeHTML(imgs[0])}" alt="${escapeHTML(c.name)}" decoding="async" loading="lazy" onerror="if(this.getAttribute('src'))this.style.display='none'">
                    ${imgs.length > 1 ? `<span class="cover-count">📷 ${imgs.length}</span>` : ''}
                </div>`
             : '';
@@ -7713,7 +7713,7 @@ function propertyCardHtml(p) {
     if (imgs.length > 0) window.__imgReg[p.id] = imgs;
     const cover = imgs.length > 0
         ? `<div class="item-cover is-clickable is-side" onclick="event.stopPropagation(); openImgViewerById('${p.id}')">
-               <img data-img-id="${escapeHTML(imgs[0])}" alt="${escapeHTML(p.title)}" decoding="async" loading="lazy" src="" onerror="this.style.display='none'">
+               <img data-img-id="${escapeHTML(imgs[0])}" alt="${escapeHTML(p.title)}" decoding="async" loading="lazy" onerror="if(this.getAttribute('src'))this.style.display='none'">
                ${imgs.length > 1 ? `<span class="cover-count">📷 ${imgs.length}</span>` : ''}
            </div>`
         : '';
