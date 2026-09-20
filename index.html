@@ -2680,6 +2680,14 @@
                     <button type="button" class="btn btn-ghost" onclick="document.getElementById('backupImportFile').click()">📂 从本机导入</button>
                     <input type="file" id="backupImportFile" accept="application/json,.json" style="display:none;" onchange="backupImportLocal(event)">
                 </div>
+                <!-- 📦 本地存储管理 -->
+                <div class="sub-card" style="margin-top:10px;padding:10px 12px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+                        <span style="font-size:12px;color:var(--text-hint);">📦 本地存储：<span id="storageUsageText" style="color:var(--text);font-weight:600;">计算中…</span></span>
+                        <button type="button" class="btn btn-ghost" style="padding:6px 12px;font-size:12px;min-height:34px;color:var(--tag-a);border-color:var(--tag-a);" onclick="compressAllLocalImages()">🧹 一键压缩全部图片</button>
+                    </div>
+                    <p style="font-size:11px;color:var(--text-hint);margin:6px 0 0;line-height:1.5;">图片最占空间。点上方按钮把所有历史房源/客源图片重新高压缩，立刻释放空间，数据不丢失，云端自动同步。</p>
+                </div>
                 <div class="err" id="backupImportErr"></div>
                 <p class="backup-hint" id="sbHint" style="display:none;"></p>
                 <!-- 高级配置（已默认自动配置） -->
@@ -6115,6 +6123,57 @@ function compressImage(src, maxEdge, quality, cb) {
     img.src = src;
 }
 
+// 显示本地存储用量
+function showStorageUsage() {
+    try {
+        let used = 0;
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            used += (localStorage.getItem(k) || '').length;
+        }
+        const usedKB = Math.round(used / 1024);
+        const estLimit = 5 * 1024;
+        const pct = Math.min(100, Math.round(usedKB / estLimit * 100));
+        const el = document.getElementById('storageUsageText');
+        if (el) el.textContent = usedKB + ' KB（约' + pct + '%）';
+    } catch (e) {}
+}
+
+// 一键压缩本地所有图片（盘源+客源），释放 localStorage 空间
+function compressAllLocalImages() {
+    const proKey = 're_properties_v1';
+    const cusKey = 're_customers_v1';
+    let pros = [], cuss = [];
+    try { pros = JSON.parse(localStorage.getItem(proKey) || '[]'); } catch (e) {}
+    try { cuss = JSON.parse(localStorage.getItem(cusKey) || '[]'); } catch (e) {}
+    const all = [];
+    pros.forEach(p => { if (p.images && p.images.length) p.images.forEach((im, i) => all.push({arr: p.images, idx: i, src: im})); });
+    cuss.forEach(c => { if (c.images && c.images.length) c.images.forEach((im, i) => all.push({arr: c.images, idx: i, src: im})); });
+    const total = all.length;
+    if (total === 0) { toast('ℹ️ 没有图片需要压缩'); return; }
+    const beforeKB = Math.round(all.reduce((s, x) => s + (x.src || '').length, 0) / 1024);
+    toast('⏳ 正在压缩 ' + total + ' 张图片，请稍候…');
+    let done = 0;
+    all.forEach(item => {
+        compressImage(item.src, 480, 0.5, function (dataUrl) {
+            item.arr[item.idx] = dataUrl;
+            done++;
+            if (done >= total) {
+                try { localStorage.setItem(proKey, JSON.stringify(pros)); } catch (e) {}
+                try { localStorage.setItem(cusKey, JSON.stringify(cuss)); } catch (e) {}
+                let afterLen = 0;
+                pros.forEach(p => { (p.images || []).forEach(im => afterLen += (im || '').length); });
+                cuss.forEach(c => { (c.images || []).forEach(im => afterLen += (im || '').length); });
+                const afterKB = Math.round(afterLen / 1024);
+                const saved = Math.max(0, beforeKB - afterKB);
+                showStorageUsage();
+                if (typeof cloudSyncDebounced === 'function') { try { cloudSyncDebounced(); } catch (e) {} }
+                toast('✅ 压缩完成：' + total + ' 张，释放约 ' + saved + ' KB');
+            }
+        });
+    });
+}
+
 // 渲染表单内的图片预览
 function renderImagePreview(arr, previewId) {
     const host = document.getElementById(previewId);
@@ -6167,7 +6226,7 @@ function attachImageInput(inputId, previewId) {
         toRead.forEach(file => {
             const reader = new FileReader();
             reader.onload = function (ev) {
-                compressImage(ev.target.result, IMG_THUMB_MAX, 0.75, function (dataUrl) {
+                compressImage(ev.target.result, IMG_THUMB_MAX, 0.58, function (dataUrl) {
                     next.push(dataUrl);
                     pending--;
                     if (pending <= 0) {
