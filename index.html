@@ -4105,7 +4105,7 @@ function renderGlobalResults() {
                 // 小缩略图：有图显示图，没图显示占位图标
                 const _firstImg = (Array.isArray(p.images) && p.images.length) ? p.images[0] : (p.cover || '');
                 const _thumb = _firstImg
-                    ? `<img src="${escapeHTML(_firstImg)}" alt="" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0;background:var(--bg-card,#eee);" onerror="this.style.display='none'">`
+                    ? `<img data-img-id="${escapeHTML(_firstImg)}" alt="" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0;background:var(--bg-card,#eee);" src="" onerror="this.style.display='none'">`
                     : `<span style="width:48px;height:48px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:20px;background:rgba(212,175,55,0.12);color:var(--tag-a,#d4af37);">🏠</span>`;
                 return `<div class="gr-item" style="display:flex;align-items:center;gap:10px;" onclick="gsPreview('property','${p.id}')">
                     ${_thumb}
@@ -4143,6 +4143,7 @@ function renderGlobalResults() {
             ${proHtml}
         </div>` : ''}
     `;
+    lazyLoadCovers();
 }
 
 /* ----------------------------------------------------------
@@ -4289,17 +4290,17 @@ function _gsRenderPreview(type, idx, items) {
 /* 预览图片区（封面大图 + 多图网格） */
 function _gsImgBlockHtml(imgs, id, type) {
     if (!imgs || imgs.length === 0) return '';
+    // 注册到 __imgReg，大图查看时由 openImgViewerById 异步解析 ID → base64
+    window.__imgReg[id] = imgs;
+    const viewerCall = `openImgViewerById('${id}')`;
     const cover = imgs[0];
     const others = imgs.slice(1);
-    const viewerCall = type === 'property'
-        ? `openImgViewerById('${id}')`
-        : `openImgViewer(JSON.parse('${JSON.stringify(imgs)}'), 0);`;
-    // 封面大图（居上）
+    // 封面大图（居上）：data-img-id 占位，lazyLoadCovers 异步填充
     const coverHtml = `<div style="width:100%;aspect-ratio:4/3;background:var(--bg-soft);border-radius:14px;overflow:hidden;display:flex;align-items:center;justify-content:center;cursor:zoom-in;" onclick="${viewerCall}">
-        <img src="${cover}" style="width:100%;height:100%;object-fit:cover;"></div>`;
+        <img data-img-id="${escapeHTML(cover)}" style="width:100%;height:100%;object-fit:cover;" src="" onerror="this.style.display='none';"></div>`;
     if (others.length === 0) return coverHtml;
     const gridHtml = `<div style="margin-top:8px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;">
-        ${others.slice(0, 7).map((src, k) => `<img src="${src}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;cursor:zoom-in;" onclick="openImgViewer(JSON.parse('${JSON.stringify(imgs)}'), ${k + 1});">`).join('')}
+        ${others.slice(0, 7).map((src) => `<img data-img-id="${escapeHTML(src)}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;cursor:zoom-in;background:var(--bg-soft);" src="" onclick="${viewerCall}" onerror="this.style.display='none';">`).join('')}
     </div>${imgs.length > 8 ? `<div style="font-size:12px;color:var(--text-hint);margin-top:6px;">共 ${imgs.length} 张图片，点击上方任意图可左右划浏览全部</div>` : ''}`;
     return coverHtml + gridHtml;
 }
@@ -4357,6 +4358,7 @@ function _gsShowModal({ icon, title, badge, navLabel, navPrev, navNext, topImage
     </div>`;
     const tpl = document.createElement('template');
     tpl.innerHTML = html.trim();
+    lazyLoadCovers();
     document.body.appendChild(tpl.content.firstChild);
     // 阻止背景滚动
     const prev = document.body.style.overflow;
@@ -6097,6 +6099,127 @@ let imgViewerList = [];
 let imgViewerIdx = 0;
 window.__imgReg = {};  // 卡片渲染时按 id 暂存图片数组，供封面点击大图预览
 
+// ===== IndexedDB 图片存储（解决 localStorage 5MB 配额限制） =====
+const IDB_DB = 'ego_db_v1';
+const IDB_STORE = 'images';
+let _idbPromise = null;
+function idbOpen() {
+    if (_idbPromise) return _idbPromise;
+    _idbPromise = new Promise((resolve, reject) => {
+        let req;
+        try { req = indexedDB.open(IDB_DB, 1); }
+        catch (e) { _idbPromise = null; reject(e); return; }
+        req.onupgradeneeded = e => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE, { keyPath: 'id' });
+        };
+        req.onsuccess = e => resolve(e.target.result);
+        req.onerror = e => { _idbPromise = null; reject(e); };
+    });
+    return _idbPromise;
+}
+async function idbPutImage(id, dataUrl) {
+    const db = await idbOpen();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).put({ id, data: dataUrl });
+        tx.oncomplete = () => resolve();
+        tx.onerror = e => reject(e);
+    });
+}
+async function idbGetImage(id) {
+    if (!id || typeof id !== 'string') return null;
+    if (id.startsWith('data:')) return id;
+    try {
+        const db = await idbOpen();
+        return await new Promise((resolve, reject) => {
+            const req = db.transaction(IDB_STORE).objectStore(IDB_STORE).get(id);
+            req.onsuccess = () => resolve(req.result ? req.result.data : null);
+            req.onerror = e => reject(e);
+        });
+    } catch (e) { return null; }
+}
+function genImgId() { return 'img_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8); }
+function isImgRef(s) { return typeof s === 'string' && s.startsWith('img_'); }
+
+// 把一组图片（混合 base64/ID）全部存到 IndexedDB，返回 ID 数组
+async function stashImages(arr) {
+    const out = [];
+    for (const im of (arr || [])) {
+        if (typeof im === 'string' && im.startsWith('data:image')) {
+            const id = genImgId();
+            try { await idbPutImage(id, im); out.push(id); }
+            catch (e) { out.push(im); }
+        } else { out.push(im); }
+    }
+    return out;
+}
+// 把一组图片（混合 base64/ID）全部解析成 base64
+async function resolveImages(arr) {
+    const out = [];
+    for (const im of (arr || [])) {
+        if (typeof im === 'string' && im.startsWith('data:')) { out.push(im); continue; }
+        const d = await idbGetImage(im);
+        if (d) out.push(d);
+    }
+    return out;
+}
+// 首次加载：把 localStorage 里残留的 base64 图片搬到 IndexedDB
+async function migrateImagesToIDB() {
+    if (localStorage.getItem('idb_migrated_v1') === 'done') return;
+    let moved = 0;
+    try {
+        const pros = JSON.parse(localStorage.getItem(PRO_STORAGE) || '[]');
+        for (const p of pros) {
+            if (Array.isArray(p.images)) {
+                const ni = [];
+                for (const im of p.images) {
+                    if (typeof im === 'string' && im.startsWith('data:image')) {
+                        const id = genImgId();
+                        await idbPutImage(id, im);
+                        ni.push(id); moved++;
+                    } else ni.push(im);
+                }
+                p.images = ni;
+            }
+        }
+        localStorage.setItem(PRO_STORAGE, JSON.stringify(pros));
+    } catch (e) { console.error('迁移盘源图片失败', e); }
+    try {
+        const cuss = JSON.parse(localStorage.getItem(CUS_STORAGE) || '[]');
+        for (const c of cuss) {
+            if (Array.isArray(c.images)) {
+                const ni = [];
+                for (const im of c.images) {
+                    if (typeof im === 'string' && im.startsWith('data:image')) {
+                        const id = genImgId();
+                        await idbPutImage(id, im);
+                        ni.push(id); moved++;
+                    } else ni.push(im);
+                }
+                c.images = ni;
+            }
+        }
+        localStorage.setItem(CUS_STORAGE, JSON.stringify(cuss));
+    } catch (e) { console.error('迁移客源图片失败', e); }
+    localStorage.setItem('idb_migrated_v1', 'done');
+    console.log('✅ 图片迁移到 IndexedDB 完成，共', moved, '张');
+}
+
+// 卡片封面懒加载：渲染后批量把 [data-img-id] 替换成真实图片
+async function lazyLoadCovers() {
+    const nodes = document.querySelectorAll('img[data-img-id]');
+    for (const img of nodes) {
+        if (img.src) continue;
+        const id = img.dataset.imgId;
+        if (!id) continue;
+        if (id.startsWith('data:')) { img.src = id; img.removeAttribute('data-img-id'); continue; }
+        const d = await idbGetImage(id);
+        if (d) { img.src = d; img.removeAttribute('data-img-id'); }
+        else { img.style.display = 'none'; }
+    }
+}
+
 // 压缩图片：返回 dataURL（jpeg）
 function compressImage(src, maxEdge, quality, cb) {
     const img = new Image();
@@ -6271,10 +6394,12 @@ function imgViewerNav(dir) {
 }
 
 // 通过卡片 id 打开大图预览（避免把 base64 内联到 onclick）
-function openImgViewerById(id) {
+async function openImgViewerById(id) {
     const imgs = window.__imgReg[id];
     if (!imgs || imgs.length === 0) return;
-    openImgViewer(imgs, 0);
+    const resolved = await resolveImages(imgs);
+    if (resolved.length === 0) { toast('⚠️ 图片加载失败'); return; }
+    openImgViewer(resolved, 0);
 }
 
 /* =========================================================
@@ -6458,7 +6583,7 @@ function resetCustomerForm() {
     hideError('cusError');
 }
 
-function submitCustomer() {
+async function submitCustomer() {
     hideError('cusError');
     const name = safeStr(document.getElementById('cusName').value);
     const phone = safeStr(document.getElementById('cusPhone').value);
@@ -6471,7 +6596,7 @@ function submitCustomer() {
         name, phone, note,
         tags: Array.from(cusSelectedTags),
         star: cusStar,
-        images: cusImages.slice(),
+        images: await stashImages(cusImages),
         followups: cusFollowups.slice(),
         pinnedAt: Date.now(),
         updatedAt: Date.now(),
@@ -6507,7 +6632,7 @@ function submitCustomer() {
     toast(isEdit ? '✅ 已保存客源修改' : '✅ 已新增客源');
 }
 
-function editCustomer(id) {
+async function editCustomer(id) {
     const list = loadCustomers();
     const c = list.find(x => x.id === id);
     if (!c) return;
@@ -6527,7 +6652,7 @@ function editCustomer(id) {
     cusFollowups = Array.isArray(c.followups) ? c.followups.slice() : [];
     renderFollowupList('customer');
     document.querySelectorAll('.star-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.val) === cusStar));
-    cusImages = Array.isArray(c.images) ? c.images.slice() : [];
+    cusImages = await resolveImages(Array.isArray(c.images) ? c.images : []);
     renderImagePreview(cusImages, 'cusImagePreview');
     renderCusTagChips();
     // 切到录入子视图并滚到表单
@@ -6627,7 +6752,7 @@ function renderCustomerList() {
         if (imgs.length > 0) window.__imgReg[c.id] = imgs;
         const cover = imgs.length > 0
             ? `<div class="item-cover is-clickable" onclick="event.stopPropagation(); openImgViewerById('${c.id}')">
-                   <img src="${imgs[0]}" alt="${escapeHTML(c.name)}" decoding="async" loading="lazy">
+                   <img data-img-id="${escapeHTML(imgs[0])}" alt="${escapeHTML(c.name)}" decoding="async" loading="lazy" src="" onerror="this.style.display='none'">
                    ${imgs.length > 1 ? `<span class="cover-count">📷 ${imgs.length}</span>` : ''}
                </div>`
             : '';
@@ -6675,6 +6800,7 @@ function renderCustomerList() {
     }
     if (pagerHtml) html += pagerHtml;
     host.innerHTML = html;
+    lazyLoadCovers();
 }
 
 /* =========================================================
@@ -7288,7 +7414,7 @@ function _findDuplicateProperty(d, list) {
     }
     return null;
 }
-function submitProperty() {
+async function submitProperty() {
     hideError('proError');
     const title = safeStr(document.getElementById('proTitle').value);
     if (!title) return showError('proError', '请填写房源标题 / 小区名');
@@ -7333,7 +7459,7 @@ function submitProperty() {
         rentValue: '',
         yearlyRentWan: '',
         tags: Array.from(finalTags),
-        images: proImages.slice(),
+        images: await stashImages(proImages),
         followups: proFollowups.slice(),
         pinnedAt: Date.now(),
         updatedAt: Date.now(),
@@ -7387,7 +7513,7 @@ function submitProperty() {
     toast(isEdit ? '✅ 已保存盘源修改' : '✅ 已新增盘源');
 }
 
-function editProperty(id) {
+async function editProperty(id) {
     const list = loadProperties();
     const p = list.find(x => x.id === id);
     if (!p) return;
@@ -7423,7 +7549,7 @@ function editProperty(id) {
     } else {
         document.getElementById('proRentInput').value = '';
     }
-    proImages = Array.isArray(p.images) ? p.images.slice() : [];
+    proImages = await resolveImages(Array.isArray(p.images) ? p.images : []);
     renderImagePreview(proImages, 'proImagePreview');
     renderProTagChips();
     // 切到录入子视图并滚到表单
@@ -7587,7 +7713,7 @@ function propertyCardHtml(p) {
     if (imgs.length > 0) window.__imgReg[p.id] = imgs;
     const cover = imgs.length > 0
         ? `<div class="item-cover is-clickable is-side" onclick="event.stopPropagation(); openImgViewerById('${p.id}')">
-               <img src="${imgs[0]}" alt="${escapeHTML(p.title)}" decoding="async" loading="lazy">
+               <img data-img-id="${escapeHTML(imgs[0])}" alt="${escapeHTML(p.title)}" decoding="async" loading="lazy" src="" onerror="this.style.display='none'">
                ${imgs.length > 1 ? `<span class="cover-count">📷 ${imgs.length}</span>` : ''}
            </div>`
         : '';
@@ -7825,6 +7951,7 @@ function renderPropertyList() {
         html = headLine + html;
     }
     host.innerHTML = html;
+    lazyLoadCovers();
 }
 
 /* =========================================================
@@ -8298,6 +8425,9 @@ async function cloudSyncUpload() {
         const props = loadProperties() || [];
         const cus = loadCustomers() || [];
         const tags = loadProTags() || [];
+        // 上传前：把图片 ID 解析成 base64（云端存完整含图 JSON）
+        for (const p of props) p.images = await resolveImages(p.images || []);
+        for (const c of cus) c.images = await resolveImages(c.images || []);
         // ===== 省流量：内容指纹无变化则跳过（指纹剥离 _u，避免"仅时间戳变化"触发无意义上传） =====
         try {
             const hashSrc = JSON.stringify({ props: _stripU(props), cus: _stripU(cus), tags: tags }) + '|' + session.user.email;
@@ -8462,8 +8592,19 @@ async function cloudRestore() {
             toast('⚠️ 云端无备份');
             return;
         }
-        customConfirm('从云端恢复将覆盖当前所有房源/客源/标签数据，确定继续吗？', () => {
+        customConfirm('从云端恢复将覆盖当前所有房源/客源/标签数据，确定继续吗？', async () => {
             try {
+                // 恢复前：把云端 base64 图片拆到 IndexedDB
+                for (const p of pros) {
+                    if (Array.isArray(p.images) && p.images.some(im => typeof im === 'string' && im.startsWith('data:image'))) {
+                        p.images = await stashImages(p.images);
+                    }
+                }
+                for (const c of cuss) {
+                    if (Array.isArray(c.images) && c.images.some(im => typeof im === 'string' && im.startsWith('data:image'))) {
+                        c.images = await stashImages(c.images);
+                    }
+                }
                 if (pros.length) localStorage.setItem(PRO_STORAGE, JSON.stringify(pros.map(normalizeProperty)));
                 if (tagss.length) localStorage.setItem(PRO_TAG_STORAGE, JSON.stringify(tagss));
                 if (cuss.length) localStorage.setItem(CUS_STORAGE, JSON.stringify(cuss));
@@ -8712,6 +8853,17 @@ async function cloudPullMyCustomers() {
             (cloudTags || []).forEach(t => { if (t && tset.indexOf(t) < 0) tset.push(t); });
             (localTags || []).forEach(t => { if (t && tset.indexOf(t) < 0) tset.push(t); });
             tags = tset;
+        }
+        // 写本地前：把云端带下来的 base64 图片拆到 IndexedDB，本地只存 ID
+        for (const c of customers) {
+            if (Array.isArray(c.images) && c.images.some(im => typeof im === 'string' && im.startsWith('data:image'))) {
+                c.images = await stashImages(c.images);
+            }
+        }
+        for (const p of properties) {
+            if (Array.isArray(p.images) && p.images.some(im => typeof im === 'string' && im.startsWith('data:image'))) {
+                p.images = await stashImages(p.images);
+            }
         }
         localStorage.setItem(CUS_STORAGE, JSON.stringify(customers));
         try { localStorage.setItem(CLOUD_CUS_CACHE, JSON.stringify({ ts: Date.now(), items: customers.length, cloudCnt: customers.length })); } catch (e) {}
@@ -9384,6 +9536,8 @@ updateAuthUI();
         const t = document.getElementById('ghToken');
         if (o && o.value && r && r.value && t && t.value && !ghLoadConfig()) ghSaveConfig();
     } catch (e) {}
+    // 首次加载：把 localStorage 里的 base64 图片搬到 IndexedDB（异步，不阻塞首屏）
+    try { migrateImagesToIDB().then(() => { try { showStorageUsage(); } catch(e){} }); } catch (e) {}
     // 打开页面自动同步（账号模式：需已登录）：
     //   1) 本地有数据才先上传（防丢本地新数据，同时避免空数据覆盖云端）
     //   2) 无论是否有本地数据，都强制从云端拉取覆盖，保证多设备打开即实时一致
