@@ -2284,12 +2284,12 @@
             </div><!-- /tool-loan -->
         </div>
 
+
         <div class="tabs" role="tablist">
             <button type="button" class="tab-btn active" data-icon="🧰" data-tab="calc" onclick="switchTab('calc')">工具</button>
         </div>
     </div>
 </div>
-
 <script>
 /* 文本粘贴智能录入：保留 fillFormFromOcr + parsePropertyOcr 等解析函数，
    供「粘贴房源信息自动填表」功能复用（图片截图录入已移除）。 */
@@ -9096,7 +9096,7 @@ updateAuthUI();
         if (o && o.value && r && r.value && t && t.value && !ghLoadConfig()) ghSaveConfig();
     } catch (e) {}
     // 首次加载：把 localStorage 里的 base64 图片搬到 IndexedDB（异步，不阻塞首屏）
-    // 小工具版：跳过图片迁移
+    try { migrateImagesToIDB().then(() => { try { showStorageUsage(); } catch(e){} }); } catch (e) {}
     // 打开页面自动同步（账号模式：需已登录）：
     //   1) 本地有数据才先上传（防丢本地新数据，同时避免空数据覆盖云端）
     //   2) 无论是否有本地数据，都强制从云端拉取覆盖，保证多设备打开即实时一致
@@ -9128,23 +9128,5 @@ updateAuthUI();
 })();
 </script>
 
-<!-- 图片大图预览 -->
-<div class="img-viewer-mask" id="imgViewerMask" onclick="if(event.target===this)closeImgViewer()">
-    <button type="button" class="img-viewer-close" onclick="closeImgViewer()">✕</button>
-    <button type="button" class="img-viewer-nav prev" onclick="imgViewerNav(-1)">‹</button>
-    <img id="imgViewerImg" src="" alt="预览">
-    <button type="button" class="img-viewer-nav next" onclick="imgViewerNav(1)">›</button>
-</div>
-
-<!-- 自定义确认弹窗（替代原生 confirm） -->
-<div class="confirm-mask" id="confirmMask" onclick="if(event.target===this)__closeConfirm(false)">
-    <div class="confirm-box">
-        <div class="confirm-msg" id="confirmMsg"></div>
-        <div class="confirm-actions">
-            <button type="button" class="btn btn-ghost" onclick="__closeConfirm(false)">取消</button>
-            <button type="button" class="btn btn-primary" onclick="__closeConfirm(true)">确定</button>
-        </div>
-    </div>
-</div>
-<script>(function(){function boot(){try{switchToolView('roi');}catch(e){}}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();})();</script></body>
+<script>(function(){function boot(){try{switchToolView("roi");}catch(e){}}if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot);else boot();})();</script></body>
 </html>
