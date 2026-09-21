@@ -9143,31 +9143,14 @@ updateAuthUI();
 
 <script>window.addEventListener("load",function(){setTimeout(function(){try{switchTab("calc");switchToolView("roi");}catch(e){}},100);});</script>
 
-<div style="max-width:680px;margin:24px auto 80px;padding:0 16px;">
+<div style="max-width:680px;margin:24px auto 30px;padding:0 16px;">
   <div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:16px;padding:20px;text-align:center;">
     <div style="font-size:18px;font-weight:700;color:#92400e;margin-bottom:6px;">☕ 觉得好用，请高人喝杯茶</div>
-    <div style="font-size:12.5px;color:#b45309;margin-bottom:14px;">工具持续更新中，您的支持是最大动力～</div>
-    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
-      <button onclick="showTipQr('wx')" style="flex:1;min-width:160px;padding:12px;border:none;border-radius:10px;background:#07c160;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">💚 微信打赏</button>
-    </div>
+    <div style="font-size:12.5px;color:#b45309;margin-bottom:14px;">长按下方二维码，识别打赏支持一下～</div>
+    <img src="assets/tip-qr.webp" alt="微信打赏收款码" style="width:200px;height:200px;object-fit:cover;border-radius:12px;border:3px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,0.15);display:block;margin:0 auto;-webkit-touch-callout:default;-webkit-user-select:auto;user-select:auto;">
   </div>
 </div>
-<div id="tipQrModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:99999;align-items:center;justify-content:center;" onclick="this.style.display='none'">
-  <div style="background:#fff;border-radius:16px;padding:24px;max-width:320px;width:88%;text-align:center;" onclick="event.stopPropagation()">
-    <div id="tipQrTitle" style="font-size:16px;font-weight:700;color:#1a1a1a;margin-bottom:12px;">微信扫码打赏</div>
-    <img src="assets/tip-qr.webp" alt="打赏收款码" style="width:220px;height:220px;object-fit:cover;border-radius:12px;border:1px solid #e5e7eb;display:block;margin:0 auto;">
-    <div style="font-size:12px;color:#6b7280;margin-top:12px;">长按图片识别二维码打赏</div>
-    <button onclick="document.getElementById('tipQrModal').style.display='none'" style="margin-top:14px;padding:8px 24px;border:none;border-radius:8px;background:#e5e7eb;color:#374151;cursor:pointer;">关闭</button>
-  </div>
-</div>
-<script>
-function showTipQr(type){
-  var m=document.getElementById('tipQrModal');
-  var t=document.getElementById('tipQrTitle');
-  t.textContent = type==='wx' ? '💚 微信扫码打赏' : '💙 支付宝扫码打赏';
-  m.style.display='flex';
-}
-</script>
+
 <div style="max-width:680px;margin:0 auto 30px;padding:0 16px;text-align:center;color:#9ca3af;font-size:12px;line-height:1.7;">
   作者：高人 · 有问题请咨询微信：egoego
 </div>
