@@ -452,7 +452,7 @@
 
         /* Tabs — 固定到底部，手机底部操作区 */
         .tabs {display:flex;gap:6px;background:var(--chip-bg);border-radius:14px;padding:6px;border:1px solid var(--chip-border);position:fixed;left:50%;bottom:calc(10px + env(safe-area-inset-bottom));transform:translateX(-50%);width:auto;min-width:200px;max-width:320px;z-index:100;box-shadow:0 -6px 24px rgba(0,0,0,0.25);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);}
-        #loginArea,#userArea,.backup-stat,.backup-actions,#autoSyncRow,[id*="cloud"],[id*="sync"],[id*="backup"],[id*="Backup"],#avatarSection{display:none!important;}
+        #loginArea,#userArea,.backup-stat,.backup-actions,#autoSyncRow,[id*="cloud"],[id*="sync"],[id*="backup"],[id*="Backup"],#avatarSection,#headerUserBox{display:none!important;}
         /* 小工具版：只有一个tab，隐藏底部导航条 */
         .tabs{display:none!important;}
         .app-shell{padding-bottom:24px!important;}
@@ -1989,6 +1989,7 @@
                         <div class="detail-value" id="detailRent">-</div>
                     </div>
                 </div>
+                <button type="button" class="btn btn-ghost" style="margin-top:12px;padding:8px 16px;font-size:13px;color:var(--accent);border-color:var(--accent);" onclick="copyRoiResult()">📋 一键复制</button>
             </div>
             </div><!-- /tool-roi -->
 
@@ -4740,6 +4741,36 @@ function calculate(silent) {
     document.getElementById('detailPrice').textContent = fmtMoney(totalPrice);
     document.getElementById('detailRent').textContent = fmtMoney(yearlyRent);
     document.getElementById('resultCard').classList.add('show');
+    // 存储结果供复制
+    var monthlyRent = currentRentType === 'yearly' ? rentVal * 10000 / 12 : rentVal;
+    window.__roiResultText = '回报率计算结果\n' +
+        '房产总价：' + totalPriceWan.toFixed(2) + ' 万元\n' +
+        '月租金：' + monthlyRent.toFixed(0) + ' 元\n' +
+        '年租金：' + (yearlyRent/10000).toFixed(2) + ' 万元\n' +
+        '年回报率：' + rate.toFixed(2) + '%\n' +
+        '回本年限：' + (100/rate).toFixed(1) + ' 年';
+}
+
+function copyRoiResult() {
+    const text = window.__roiResultText;
+    if (!text) { toast('⚠️ 请先计算回报率'); return; }
+    const doCopy = (txt) => {
+        const ta = document.createElement('textarea');
+        ta.value = txt;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); toast('✅ 已复制，可粘贴发给客户'); }
+        catch (e) { toast('⚠️ 复制失败，请手动选择复制'); }
+        document.body.removeChild(ta);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => toast('✅ 已复制，可粘贴发给客户'))
+            .catch(() => doCopy(text));
+    } else {
+        doCopy(text);
+    }
 }
 
 /* =========================================================
