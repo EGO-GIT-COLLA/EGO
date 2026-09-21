@@ -2146,7 +2146,7 @@
                         </div>
                     </div>
                     <div class="form-group">
-                        <label>首付比例 <span class="muted">（政策口径：商贷首套/二套最低15%，公积金/组合贷最低20%）</span></label>
+                        <label>首付比例 <span class="muted">（政策口径：住宅首套/二套最低15%，公积金/组合贷最低20%，商业性质最低30%）</span></label>
                         <div class="seg" style="grid-template-columns:repeat(5,1fr);">
                             <button type="button" data-ratio="15" onclick="setLoanRatio(15)">1.5成</button>
                             <button type="button" data-ratio="20" onclick="setLoanRatio(20)">2成</button>
@@ -2171,6 +2171,13 @@
                         </div>
                     </div>
                     <div class="form-group">
+                        <label>房产性质</label>
+                        <div class="seg" style="grid-template-columns:1fr 1fr;">
+                            <button type="button" id="loanPropResi" class="active" onclick="setLoanPropType('resi')">住宅</button>
+                            <button type="button" id="loanPropBiz" onclick="setLoanPropType('biz')">商业性质</button>
+                        </div>
+                    </div>
+                    <div class="form-group" id="loanHouseTypeGroup">
                         <label>购房套数</label>
                         <div class="seg" style="grid-template-columns:1fr 1fr;">
                             <button type="button" id="loanHouseFirst" class="active" onclick="setLoanHouseType('first')">首套</button>
@@ -2260,7 +2267,7 @@
                         <div class="form-group">
                             <label>商业贷款利率 <span class="muted">（首套默认3.05%/二套3.2%，LPR3.5%，可调整）</span></label>
                             <div class="input-wrapper">
-                                <input type="number" id="loanCommercialRate" value="3.05" min="0" max="20" step="0.01" oninput="calcLoan(true)">
+                                <input type="number" id="loanCommercialRate" value="3.0" min="0" max="20" step="0.01" oninput="calcLoan(true)">
                                 <span class="prefix prefix-right">%</span>
                             </div>
                         </div>
@@ -2277,7 +2284,7 @@
                     <button type="button" class="btn btn-primary" onclick="calcLoan()">计算房贷</button>
                     <div class="err" id="loanError"></div>
                     <div style="margin-top:10px;font-size:11.5px;color:var(--text-hint);line-height:1.6;">
-                        📌 广州2026年9月最新（据《2026年房贷政策对比表》）：5年期LPR 3.5%（连续15个月不变）；商贷首套3.05%（LPR-45BP）/二套3.2%（LPR-30BP），首套二套首付统一最低15%；公积金5年以上首套2.6%/二套3.075%，5年及以下2.1%/2.525%，个人100万/家庭200万（一孩+10%/二孩+40%/三孩+60%/绿色建筑+30%，最高360万）；商贷最长40年，公积金最长30年。仅供参考，以银行和公积金中心审批为准。
+                        📌 广州2026年9月最新：住宅商贷首套/二套统一3.0%，首付最低15%；公积金5年以上首套2.6%/二套3.075%，首付最低20%，5年及以下2.1%/2.525%；商业性质（商铺/写字楼/公寓）利率4.1%，首付最低30%。个人公积金最高100万/家庭200万（一孩+10%/二孩+40%/三孩+60%/绿色建筑+30%，最高360万）；商贷最长40年，公积金最长30年。仅供参考，以银行和公积金中心审批为准。
                     </div>
                 </div>
                 <div class="result-card" id="loanResultCard">
@@ -5769,11 +5776,34 @@ function setLoanHouseType(t) {
     document.getElementById('loanHouseSecond').classList.toggle('active', t === 'second');
     // 切换首套二套时自动更新利率默认值（广州2026年9月最新）
     if (t === 'first') {
-        document.getElementById('loanCommercialRate').value = '3.05';
+        document.getElementById('loanCommercialRate').value = '3.0';
         document.getElementById('loanFundRate').value = '2.6';
     } else {
-        document.getElementById('loanCommercialRate').value = '3.2';
+        document.getElementById('loanCommercialRate').value = '3.0';
         document.getElementById('loanFundRate').value = '3.075';
+    }
+    calcLoan(true);
+}
+let loanPropType = 'resi'; // resi=住宅, biz=商业性质
+function setLoanPropType(pt) {
+    loanPropType = pt;
+    document.getElementById('loanPropResi').classList.toggle('active', pt === 'resi');
+    document.getElementById('loanPropBiz').classList.toggle('active', pt === 'biz');
+    // 购房套数：商业性质隐藏
+    document.getElementById('loanHouseTypeGroup').style.display = (pt === 'resi') ? '' : 'none';
+    if (pt === 'biz') {
+        // 商业性质：强制纯商贷、利率4.1%、首付30%
+        setLoanType('commercial');
+        document.getElementById('loanCommercialRate').value = '4.1';
+        // 首付默认30%
+        try {
+            loanRatio = 30;
+            document.querySelectorAll('#tool-loan [data-down]').forEach(b => b.classList.toggle('active', Number(b.dataset.down) === 30));
+            updateLoanAmount();
+        } catch(e) {}
+    } else {
+        // 回到住宅：按当前套数恢复利率
+        setLoanHouseType(loanHouseType);
     }
     calcLoan(true);
 }
@@ -5954,7 +5984,7 @@ function calcLoan(silent) {
     }
 
     // 明细
-    // 政策最低首付提示（据2026房贷政策表：商贷首套/二套最低15%，公积金/组合贷最低20%）
+    // 政策最低首付提示（据2026房贷政策表：住宅首套/二套最低15%，公积金/组合贷最低20%，商业性质最低30%）
     const minRatio = (loanType === 'commercial') ? 15 : 20;
     const policyWarn = (loanRatio < minRatio)
         ? `<div style="padding:6px 10px;margin-bottom:8px;background:rgba(212,175,55,0.15);border-radius:8px;font-size:12.5px;color:#d4af37;">⚠️ 当前首付${loanRatio}%低于${loanType === 'commercial' ? '商贷' : '公积金/组合贷'}政策最低${minRatio}%，实际审批可能被拒或需提高首付</div>`
