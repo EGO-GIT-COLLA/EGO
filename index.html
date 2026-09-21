@@ -3367,7 +3367,7 @@ function initTheme() {
     // 兼容旧值 'dark'/'light'
     let id = saved;
     if (saved === 'dark') id = 'gold';
-    if (!THEME_LIST.find(x => x.id === id)) id = 'gold';
+    if (!THEME_LIST.find(x => x.id === id)) id = 'light';
     setTheme(id);
 }
 function toggleTheme() {
