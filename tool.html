@@ -5034,21 +5034,18 @@ function calcTax(silent) {
 
     document.getElementById('taxTotal').innerHTML = (function(){
         if (totalTax >= 10000) return (totalTax/10000).toFixed(2) + '<span class="pct">万元</span>';
-        if (totalTax >= 1000)  return (totalTax/1000).toFixed(1) + '<span class="pct">千元</span>';
-        return Math.round(totalTax) + '<span class="pct">元</span>';
+        return Math.round(totalTax).toLocaleString('zh-CN') + '<span class="pct">元</span>';
     })();
 
     const fmtTaxAmt = (val) => {
         if (val <= 0) return '免征';
         if (val >= 10000) return (val / 10000).toFixed(2) + ' 万';
-        if (val >= 1000)  return (val / 1000).toFixed(1) + ' 千';
-        return Math.round(val) + ' 元';
+        return Math.round(val).toLocaleString('zh-CN') + ' 元';
     };
     const fmtTaxAmtShort = (val) => {
         if (val <= 0) return '0';
         if (val >= 10000) return (val / 10000).toFixed(2) + '万';
-        if (val >= 1000)  return (val / 1000).toFixed(1) + '千';
-        return Math.round(val) + '元';
+        return Math.round(val).toLocaleString('zh-CN') + '元';
     };
     const renderItems = (items, totalVal, title, color) => {
         const rows = items.map(([label, rate, val]) =>
@@ -5173,8 +5170,7 @@ function buildTaxCopyText(totalWan, buyerItems, sellerItems, buyerTotal, sellerT
     const fmtC = (v) => {
         if (v <= 0) return '免征';
         if (v >= 10000) return (v/10000).toFixed(2) + ' 万元';
-        if (v >= 1000)  return (v/1000).toFixed(1) + ' 千元';
-        return Math.round(v) + ' 元';
+        return Math.round(v).toLocaleString('zh-CN') + ' 元';
     };
     buyerItems.forEach(([label, rate, val]) => {
         lines.push('  ' + label + '：' + fmtC(val));
