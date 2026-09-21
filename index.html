@@ -3363,10 +3363,17 @@ function setTheme(id) {
     });
 }
 function initTheme() {
-    const saved = localStorage.getItem('theme');
-    // 兼容旧值 'dark'/'light'
-    let id = saved;
-    if (saved === 'dark') id = 'gold';
+    let id;
+    try {
+      const saved = localStorage.getItem('theme');
+      // 老版本默认是 gold（深色），用户这次要求默认白色：把旧默认 gold 自动升级为 light
+      if (!saved || saved === 'gold' || saved === 'dark') {
+          id = 'light';
+          localStorage.setItem('theme', 'light');
+      } else {
+          id = saved;
+      }
+    } catch(e) { id = 'light'; }
     if (!THEME_LIST.find(x => x.id === id)) id = 'light';
     setTheme(id);
 }
