@@ -3585,7 +3585,8 @@ function renderCusTagChips() {}
 const GS_QT_BASE_GROUPS = [
     { label: '客源', key: 'customer', tags: ['别墅客', '一手客', '二手客', '商铺客', '商住楼客', '商业体客', '租客', '地皮厂房客'] },
     { label: '总价', key: 'price',    tags: ['0-100万', '100-200万', '200-500万', '500-1000万', '1000-2000万', '2000-5000万', '5000万-1亿', '1亿以上'] },
-    { label: '类型', key: 'type',     tags: ['别墅', '商铺', '洋房', '商业体', '地皮厂房', '商住楼', '写字楼', '租盘', '售盘'] }
+    { label: '类型', key: 'type',     tags: ['别墅', '商铺', '洋房', '商业体', '地皮厂房', '商住楼', '写字楼', '租盘', '售盘'] },
+    { label: '回报率', key: 'roi',    tags: ['回报率5%以上'] }
 ];
 // 已选标签池（Set，便于增删/查重）
 const GS_SEL_TAGS = new Set();
@@ -6889,7 +6890,8 @@ const PRO_LAYOUT_TYPE_MAP = {
 // 系统内置标签：价格区间(8档) + 物业类型(7类)。这部分不会被清理，也不允许删除/改名。
 const PRO_BUILTIN_TAGS = new Set([
     ...PRO_PRICE_TAGS.map(x => x.label),
-    ...PRO_TYPE_TAGS
+    ...PRO_TYPE_TAGS,
+    '回报率5%以上'
 ]);
 // 历史版本 OCR 自动生成的"机器标签"（回报率档/面积档/物业误识别词），一律不再展示、不再勾选、从数据中清洗
 const PRO_MACHINE_TAGS = new Set([
@@ -7207,6 +7209,17 @@ function normalizeProperty(p) {
     const hasS  = p.size != null && p.size !== '' && !isNaN(Number(p.size));
     if (hasA && !hasS) p.size = Number(p.area);
     else if (hasS && !hasA) p.area = Number(p.size);
+    // 自动标签：回报率>5% 自动加"回报率5%以上"，否则移除
+    try {
+        if (!Array.isArray(p.tags)) p.tags = [];
+        var hasRoi = p.tags.indexOf('回报率5%以上') >= 0;
+        var rate = (typeof rateOfReturnPct === 'function') ? rateOfReturnPct(p) : NaN;
+        if (!isNaN(rate) && rate >= 5) {
+            if (!hasRoi) p.tags.push('回报率5%以上');
+        } else {
+            if (hasRoi) p.tags = p.tags.filter(function(t){ return t !== '回报率5%以上'; });
+        }
+    } catch(e) {}
     return p;
 }
 function loadProperties() {
