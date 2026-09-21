@@ -2277,18 +2277,15 @@
                         <button type="button" class="btn btn-ghost" style="padding:6px 12px;font-size:12px;color:var(--accent);border-color:var(--accent);" onclick="copyLoanResult()">📋 一键复制</button>
                     </div>
                     <div class="result-value" id="loanMonthly">0<span class="pct">元/月</span></div>
+                    <div style="margin-top:12px;">
+                        <div id="loanBreakdown" style="font-size:13.5px;color:var(--text-sub);line-height:1.9;"></div>
+                    </div>
+                </div>
+            </div><!-- /tool-loan -->
+        </div>
 
         <div class="tabs" role="tablist">
             <button type="button" class="tab-btn active" data-icon="🧰" data-tab="calc" onclick="switchTab('calc')">工具</button>
-        </div>
-    </div>
-</div>
-        <div class="tabs" role="tablist">
-            <button type="button" class="tab-btn" data-icon="🧰" data-tab="calc" onclick="switchTab('calc')">工具</button>
-            <button type="button" class="tab-btn" id="tabBtnCustomer" data-icon="👥" data-tab="customer" onclick="switchTab('customer')">客源</button>
-            <button type="button" class="tab-btn active" data-icon="🔎" data-tab="search" onclick="switchTab('search')">搜索</button>
-            <button type="button" class="tab-btn" data-icon="🏘️" data-tab="property" onclick="switchTab('property')">盘源</button>
-            <button type="button" class="tab-btn" data-icon="💾" data-tab="backup" onclick="switchTab('backup')">备份</button>
         </div>
     </div>
 </div>
@@ -2888,10 +2885,17 @@ function setTheme(id) {
     });
 }
 function initTheme() {
-    const saved = localStorage.getItem('theme');
-    // 兼容旧值 'dark'/'light'
-    let id = saved;
-    if (saved === 'dark') id = 'gold';
+    let id;
+    try {
+      const saved = localStorage.getItem('theme');
+      // 老版本默认是 gold（深色），用户这次要求默认白色：把旧默认 gold 自动升级为 light
+      if (!saved || saved === 'gold' || saved === 'dark') {
+          id = 'light';
+          localStorage.setItem('theme', 'light');
+      } else {
+          id = saved;
+      }
+    } catch(e) { id = 'light'; }
     if (!THEME_LIST.find(x => x.id === id)) id = 'light';
     setTheme(id);
 }
@@ -9092,7 +9096,7 @@ updateAuthUI();
         if (o && o.value && r && r.value && t && t.value && !ghLoadConfig()) ghSaveConfig();
     } catch (e) {}
     // 首次加载：把 localStorage 里的 base64 图片搬到 IndexedDB（异步，不阻塞首屏）
-    if (false) {
+    // 小工具版：跳过图片迁移
     // 打开页面自动同步（账号模式：需已登录）：
     //   1) 本地有数据才先上传（防丢本地新数据，同时避免空数据覆盖云端）
     //   2) 无论是否有本地数据，都强制从云端拉取覆盖，保证多设备打开即实时一致
