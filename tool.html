@@ -9156,9 +9156,7 @@ updateAuthUI();
 <div id="tipQrModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:99999;align-items:center;justify-content:center;" onclick="this.style.display='none'">
   <div style="background:#fff;border-radius:16px;padding:24px;max-width:320px;width:88%;text-align:center;" onclick="event.stopPropagation()">
     <div id="tipQrTitle" style="font-size:16px;font-weight:700;color:#1a1a1a;margin-bottom:12px;">微信扫码打赏</div>
-    <div style="width:220px;height:220px;margin:0 auto;background:#f3f4f6;border:2px dashed #d1d5db;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:13px;line-height:1.5;">
-      收款码待上传<br>（把微信/支付宝收款码<br>发给豆包即可替换）
-    </div>
+    <img src="assets/tip-qr.webp" alt="打赏收款码" style="width:220px;height:220px;object-fit:cover;border-radius:12px;border:1px solid #e5e7eb;display:block;margin:0 auto;">
     <div style="font-size:12px;color:#6b7280;margin-top:12px;">长按图片识别二维码打赏</div>
     <button onclick="document.getElementById('tipQrModal').style.display='none'" style="margin-top:14px;padding:8px 24px;border:none;border-radius:8px;background:#e5e7eb;color:#374151;cursor:pointer;">关闭</button>
   </div>
