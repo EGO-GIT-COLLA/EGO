@@ -5118,28 +5118,21 @@ function calcTaxFromProperty(id) {
 function buildTaxCopyText(totalWan, buyerItems, sellerItems, buyerTotal, sellerTotal, totalTaxWan) {
     const typeName = (taxPropertyType === 'residential') ? '住宅/别墅' : '商铺/写字楼/公寓';
     let lines = [];
-    lines.push('📋 房产交易税费明细');
-    lines.push('━━━━━━━━━━━━━━━━');
+    lines.push('房产交易税费明细');
     lines.push('物业类型：' + typeName);
     lines.push('房屋总价：' + totalWan.toFixed(2) + ' 万元');
     lines.push('');
-    lines.push('【👤 买方税费】合计 ' + (buyerTotal / 10000).toFixed(2) + ' 万元');
+    lines.push('买方税费（合计 ' + (buyerTotal / 10000).toFixed(2) + ' 万元）：');
     buyerItems.forEach(([label, rate, val]) => {
-        lines.push('  ' + label + '（' + rate + '）：' + (val > 0 ? (val / 10000).toFixed(2) + ' 万元' : '免征'));
+        lines.push('  ' + label + '：' + (val > 0 ? (val / 10000).toFixed(2) + ' 万元' : '免征'));
     });
     lines.push('');
-    lines.push('【🏢 卖方税费】合计 ' + (sellerTotal / 10000).toFixed(2) + ' 万元');
+    lines.push('卖方税费（合计 ' + (sellerTotal / 10000).toFixed(2) + ' 万元）：');
     sellerItems.forEach(([label, rate, val]) => {
-        lines.push('  ' + label + '（' + rate + '）：' + (val > 0 ? (val / 10000).toFixed(2) + ' 万元' : '免征'));
+        lines.push('  ' + label + '：' + (val > 0 ? (val / 10000).toFixed(2) + ' 万元' : '免征'));
     });
-    lines.push('━━━━━━━━━━━━━━━━');
-    lines.push('💰 税费合计：' + totalTaxWan.toFixed(2) + ' 万元');
-    if (taxPropertyType === 'residential') {
-        lines.push('');
-        lines.push('💡 卖旧买新个税退税（2026-2027年底有效）：卖房已缴个税后，1年内重新买房可申请退还全部或部分已缴个税。');
-    }
     lines.push('');
-    lines.push('（依据广州2026.9现行政策：住宅不满2年增值税含税价÷1.03×3.18%；实际以税局核定为准）');
+    lines.push('税费合计：' + totalTaxWan.toFixed(2) + ' 万元');
     return lines.join('\n');
 }
 
@@ -5600,8 +5593,7 @@ function calcLoan(silent) {
 function buildLoanCopyText(totalWan, downPayment, totalLoan, typeName, years, repay, rows, totalMonthly, firstMonth, lastMonth, decrease, totalInterest, totalPay) {
     const repayName = repay === 'equal' ? '等额本息' : '等额本金';
     let lines = [];
-    lines.push('🏠 房贷计算明细');
-    lines.push('━━━━━━━━━━━━━━━━');
+    lines.push('房贷计算明细');
     lines.push('房产总价：' + totalWan.toFixed(2) + ' 万元');
     lines.push('首付：' + (downPayment / 10000).toFixed(2) + ' 万元');
     lines.push('贷款总额：' + (totalLoan / 10000).toFixed(2) + ' 万元');
@@ -5610,28 +5602,25 @@ function buildLoanCopyText(totalWan, downPayment, totalLoan, typeName, years, re
     lines.push('还款方式：' + repayName);
     lines.push('');
     rows.forEach(r => {
-        lines.push('【' + r.label + '】' + (r.amount / 10000).toFixed(2) + '万，利率' + r.rate + '%');
+        lines.push(r.label + '：' + (r.amount / 10000).toFixed(2) + ' 万，利率 ' + r.rate + '%');
         if (repay === 'equal') {
             lines.push('  月供：' + r.monthly.toFixed(0) + ' 元');
         } else {
-            lines.push('  首月：' + r.firstMonth.toFixed(0) + ' 元，末月：' + r.lastMonth.toFixed(0) + ' 元，每月递减' + r.decrease.toFixed(2) + ' 元');
+            lines.push('  首月：' + r.firstMonth.toFixed(0) + ' 元，末月：' + r.lastMonth.toFixed(0) + ' 元，每月递减：' + r.decrease.toFixed(2) + ' 元');
         }
         lines.push('  总利息：' + (r.interest / 10000).toFixed(2) + ' 万元');
         lines.push('  还款总额：' + (r.pay / 10000).toFixed(2) + ' 万元');
-        lines.push('');
     });
-    lines.push('━━━━━━━━━━━━━━━━');
-    if (repay === 'equal') {
-        lines.push('💰 每月月供：' + totalMonthly.toFixed(0) + ' 元');
-    } else {
-        lines.push('💰 首月月供：' + firstMonth.toFixed(0) + ' 元');
-        lines.push('   末月月供：' + lastMonth.toFixed(0) + ' 元');
-        lines.push('   每月递减：' + decrease.toFixed(2) + ' 元');
-    }
-    lines.push('💵 总利息：' + (totalInterest / 10000).toFixed(2) + ' 万元');
-    lines.push('💵 还款总额：' + (totalPay / 10000).toFixed(2) + ' 万元');
     lines.push('');
-    lines.push('（依据广州2026《2026年房贷政策对比表》，实际以银行/公积金中心审批为准）');
+    if (repay === 'equal') {
+        lines.push('每月月供：' + totalMonthly.toFixed(0) + ' 元');
+    } else {
+        lines.push('首月月供：' + firstMonth.toFixed(0) + ' 元');
+        lines.push('末月月供：' + lastMonth.toFixed(0) + ' 元');
+        lines.push('每月递减：' + decrease.toFixed(2) + ' 元');
+    }
+    lines.push('总利息：' + (totalInterest / 10000).toFixed(2) + ' 万元');
+    lines.push('还款总额：' + (totalPay / 10000).toFixed(2) + ' 万元');
     return lines.join('\n');
 }
 
