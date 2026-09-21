@@ -2178,10 +2178,11 @@
                         </div>
                     </div>
                     <div class="form-group" id="loanHouseTypeGroup">
-                        <label>购房套数</label>
-                        <div class="seg" style="grid-template-columns:1fr 1fr;">
+                        <label>购房套数 <span class="muted">（三套及以上通常不支持公积金贷款，首付更高）</span></label>
+                        <div class="seg" style="grid-template-columns:1fr 1fr 1fr;">
                             <button type="button" id="loanHouseFirst" class="active" onclick="setLoanHouseType('first')">首套</button>
                             <button type="button" id="loanHouseSecond" onclick="setLoanHouseType('second')">二套</button>
+                            <button type="button" id="loanHouseThird" onclick="setLoanHouseType('third')">三套及以上</button>
                         </div>
                     </div>
                     <div class="form-group">
@@ -5781,13 +5782,18 @@ function setLoanHouseType(t) {
     loanHouseType = t;
     document.getElementById('loanHouseFirst').classList.toggle('active', t === 'first');
     document.getElementById('loanHouseSecond').classList.toggle('active', t === 'second');
-    // 切换首套二套时自动更新利率默认值（广州2026年9月最新）
+    document.getElementById('loanHouseThird').classList.toggle('active', t === 'third');
+    // 广州2026年9月最新：首套/二套商贷3.0%，三套及以上商贷按政策上浮（默认3.0%可手改）
     if (t === 'first') {
         document.getElementById('loanCommercialRate').value = '3.0';
         document.getElementById('loanFundRate').value = '2.6';
-    } else {
+    } else if (t === 'second') {
         document.getElementById('loanCommercialRate').value = '3.0';
         document.getElementById('loanFundRate').value = '3.075';
+    } else { // third
+        document.getElementById('loanCommercialRate').value = '3.0';
+        document.getElementById('loanFundRate').value = '3.075';
+        try { toast('提示：广州三套及以上通常不支持公积金贷款，建议选纯商贷'); } catch(e) {}
     }
     calcLoan(true);
 }
