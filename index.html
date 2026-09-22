@@ -4375,8 +4375,9 @@ function _gsShowModal({ icon, title, badge, navLabel, navPrev, navNext, topImage
     </div>`;
     const tpl = document.createElement('template');
     tpl.innerHTML = html.trim();
-    lazyLoadCovers();
     document.body.appendChild(tpl.content.firstChild);
+    // 弹窗 DOM 插入后再异步加载图片（之前写反了，导致弹窗图片不显示）
+    lazyLoadCovers();
     // 阻止背景滚动
     const prev = document.body.style.overflow;
     document.body.dataset.gsPrevOverflow = prev;
