@@ -2879,7 +2879,7 @@ function parsePropertyOcr(raw) {
     result.face = extractFace(text);
     result.proArea = extractAreaGeneral(text, ['区域', '地段', '板块', '位置', '区', '路']);
     if (!result.proArea) result.proArea = extractAreaFromCommonCity(text);
-    result.address = extractAddress(text);
+    result.address = extractFirstLineAddress(lines) || extractAddress(text);
     result.title = extractPropertyTitle(lines, result.proArea, result.layout, result.face);
     result.owner = extractOwnerName(lines, result.ownerPhone);
     if (result.owner === '王') result.owner = '王姐';
@@ -2894,46 +2894,59 @@ function parsePropertyOcr(raw) {
 function extractPropertyRent(text) {
     const t = text.replace(/\s+/g, '');
     const r = { rentMonthly: '', rentYearly: '', preferType: '' };
-    // 1) 月租：月租/租金 5000元/月 / 5000/月 / 租金 5000每月 / 月收（=月租金）/ 租 3000元/月
+    // 单位缺失时的判定：数字 >= 1000 按"元"，< 1000 按"万"（避免 60000/年 误判成 6 万万）
+    const toYuan = (n, unit) => {
+        if (unit === '万') return n * 10000;
+        if (unit === '元') return n;
+        return n >= 1000 ? n : n * 10000; // 无单位：大数按元，小数按万
+    };
+    const toWan = (n, unit) => {
+        if (unit === '万') return n;
+        if (unit === '元') return n / 10000;
+        return n >= 1000 ? n / 10000 : n; // 无单位：大数按元换算成万，小数按万
+    };
+    // 1) 月租系列（优先级从明确到模糊）
     const mPat = [
         /月收(?:租|金)?[:：]?([\d,.]+)(元|万)?\/?月?/,
+        /月租金[:：]?([\d,.]+)(元|万)?/,
         /月租[:：]?([\d,.]+)(元|万)?\/?月?/,
-        /每月租金[:：]?([\d,.]+)/,
-        /月租金([\d,.]+)/,
-        /租金[:：]?([\d,.]+)元\/月/,
-        /租金[:：]?([\d,.]+)(元|万)?\/月/,   // 租金5000/月、租金0.5万/月（不带"元"的简写）
-        /租金[:：]?([\d,.]+)(元|万)?每月/,   // 租金5000每月、租金0.5万每月
-        /租[:：]?([\d,.]+)(元|万)\/月/,      // 租5000元/月、租1.2万/月
-        /([\d,.]+)(元|万)\/月/,               // 5000元/月、1.2万/月
+        /每月租金[:：]?([\d,.]+)(元|万)?/,
+        /每月[:：]?([\d,.]+)(元|万)?/,
+        /租金[:：]?([\d,.]+)(元|万)?\/月/,
+        /租金[:：]?([\d,.]+)(元|万)?每月/,
+        /租[:：]?([\d,.]+)(元|万)?\/月/,
+        /([\d,.]+)(元|万)?\/月/,              // 裸：5000/月、0.5万/月
+        /([\d,.]+)(元|万)?每月/,               // 裸：5000每月、0.5万每月
+        /([\d,.]+)(元|万)?一个月/,             // 5000一个月、1万一个月、5000元一个月
         /([\d,.]+)元\/月/,
         // 裸"租金3500元"（无/月、无每月，但带"元"）→ 月租
-        /租金[:：]?([\d,.]+)元(?![\/每]|万)/,
+        /(?<!年)租金[:：]?([\d,.]+)元(?![\/每]|万)/,
         // 裸"租金3500"（无单位、非年租上下文）→ 月租
-        /租金[:：]?([\d,.]+)(?!\/年|万一年|每年|元|万)/
+        /租金[:：]?([\d,.]+)(?![\d.,]|\/年|一年|每年|元|万)/
     ];
     for (const p of mPat) {
         const m = t.match(p);
         if (m) {
             const n = Number(String(m[1]).replace(/,/g, ''));
             if (!isNaN(n) && n > 0) {
-                // 如果带「万」，就是 X 万/月 → 转成元
-                const yuan = (m[2] === '万') ? n * 10000 : n;
-                r.rentMonthly = String(yuan);
+                r.rentMonthly = String(Math.round(toYuan(n, m[2])));
                 r.preferType = 'monthly';
                 break;
             }
         }
     }
-    // 2) 年租：年租金 6万 / 年租 6万元 / 年收（=年租金）/ 6万/年 / 一年6万 / 6万一年 / 租金6万/年
+    // 2) 年租系列
     const yPat = [
         /年收(?:租|金)?[:：]?([\d,.]+)(万|元)?/,
         /年租金[:：]?([\d,.]+)(万|元)?/,
-        /年租[:：]?([\d,.]+)(万|元)?/,
         /每年租金[:：]?([\d,.]+)(万|元)?/,
-        /租金[:：]?([\d,.]+)(万|元)\/年/,   // 租金6万/年、租金72000元/年
-        /一年([\d,.]+)(万|元)/,             // 一年6万、一年72000元
-        /([\d,.]+)(万|元)\/年/,              // 6万/年、72000元/年
-        /([\d,.]+)万一年/,                    // 6万一年
+        /年租[:：]?([\d,.]+)(万|元)?/,
+        /每年[:：]?([\d,.]+)(万|元)?/,
+        /租金[:：]?([\d,.]+)(万|元)?\/年/,
+        /一年(?:租金)?[:：]?([\d,.]+)(万|元)?/,  // 一年6万、一年租金6万
+        /([\d,.]+)(万|元)?\/年/,               // 裸：6万/年、60000元/年、60000/年
+        /([\d,.]+)万一年/,
+        /([\d,.]+)(万|元)?一年/,               // 6万一年、60000元一年
         // 裸"租金6万"（无/月、无每月）→ 年租
         /租金[:：]?([\d,.]+)万(?!元?\/月|元?每月)/
     ];
@@ -2943,19 +2956,17 @@ function extractPropertyRent(text) {
             if (m) {
                 const n = Number(String(m[1]).replace(/,/g, ''));
                 if (!isNaN(n) && n > 0) {
-                    // 默认"万元"；如果明确带"元"就是元 → 转万元
-                    const wan = (m[2] === '元') ? n / 10000 : n;
-                    r.rentYearly = String(wan);
+                    r.rentYearly = String(toWan(n, m[2]));
                     if (!r.preferType) r.preferType = 'yearly';
                     break;
                 }
             }
         }
     }
-    // 3) 如果只拿到月租没年租，自动算年租
+    // 3) 如果只拿到月租没年租，自动算年租（月租元 -> 年租万元）
     if (!r.rentYearly && r.rentMonthly) {
         const m = Number(r.rentMonthly);
-        if (!isNaN(m)) r.rentYearly = String(((m * 12) / 10000));
+        if (!isNaN(m) && m > 0) r.rentYearly = String(Math.round(m * 12) / 10000);
     }
     // 4) 兜底：有总价 + 明确给出回报率百分比 → 反推年租金(万元)
     if (!r.rentYearly || r.rentYearly === '') {
@@ -2974,7 +2985,7 @@ function extractPropertyRent(text) {
                     const pn = Number(price);
                     if (!isNaN(rate) && rate > 0 && !isNaN(pn) && pn > 0) {
                         const wan = (pn * rate) / 100;
-                        r.rentYearly = String(wan);
+                        r.rentYearly = String(Math.round(wan * 100) / 100);
                         if (!r.preferType) r.preferType = 'yearly';
                         break;
                     }
@@ -2985,7 +2996,7 @@ function extractPropertyRent(text) {
     return r;
 }
 
-/* -------------------- OCR 解析原子函数 -------------------- */
+/* -------------------- OCR 解析原子函数 -------------------- *//* -------------------- OCR 解析原子函数 -------------------- */
 function extractPhone(text) {
     // 大陆手机号 1[3-9]xxxxxxxxx，或国际区号前的 11 位手机号
     const m = text.match(/(?:\+?86[\s\-]?)?(1[3-9]\d{9})/);
@@ -3049,6 +3060,40 @@ function extractAreaFromCommonCity(text) {
     }
     return '';
 }
+// 第一句优先作为地址：用户粘贴的第一行通常是楼盘/位置描述（如"汇通广场7字转角位靓铺"）
+function extractFirstLineAddress(lines) {
+    // 地名/楼盘特征词（加分）
+    const placeWords = ['号', '路', '街', '道', '巷', '花园', '小区', '广场', '大厦', '城', '中心', '园', '苑', '府', '湾', '寓', '村', '庭', '居', '轩', '阁', '桥', '汇', '镇', '区', '栋', '幢', '单元', '楼', '铺', '商住'];
+    // 营销/非地址词（减分）
+    const badWords = ['笋盘', '急售', '降价', '出售', '出租', '笋', '特价', '捡漏', '亏本', '甩卖', '新上', '主推', '独家', '推荐', '诚心', '业主直售', '免中介', '降价急售'];
+    for (let i = 0; i < Math.min(4, lines.length); i++) {
+        let l = lines[i]
+            .replace(/^\d+[\.\)、\s]+/, '')   // 列表编号
+            .replace(/^【(.+?)】$/, '$1')
+            .replace(/^「(.+?)」$/, '$1')
+            .replace(/^『(.+?)』$/, '$1')
+            .trim();
+        // 纯数据行跳过
+        if (/^1\d{10}$/.test(l) || /^0\d{2,3}/.test(l)) continue;
+        if (/^(总价|总金额|售价|成交价|报价|底价|价格|单价|月租|月租金|年租|年租金|租金|面积|户型|朝向|电话|联系人|业主|房东|备注|跟进)\s*[:：]?/.test(l)) continue;
+        if (/^[\d.,]+(?:万|万元|㎡|平方米|平米|平|方)/.test(l)) continue;
+        const cns = (l.match(/[\u4e00-\u9fa5]/g) || []).length;
+        if (cns < 2 || l.length > 50) continue;
+        // 打分：地址特征词 +2，营销词 -3，感叹号 -1
+        let score = 0;
+        for (const w of placeWords) if (l.includes(w)) score += 2;
+        for (const w of badWords) if (l.includes(w)) score -= 3;
+        if (l.includes('！') || l.includes('!')) score -= 1;
+        if (score >= 1) return l;
+        // 无特征词但整行是 2-15 个纯中文（可能是小区名/商圈名）也作为地址；仍需排除营销词
+        if (/^[\u4e00-\u9fa5]{2,15}$/.test(l)) {
+            let s2 = 0;
+            for (const w of badWords) if (l.includes(w)) s2 -= 3;
+            if (s2 >= 0) return l;
+        }
+    }
+    return '';
+}
 function extractAddress(text) {
     const patterns = [
         /地址[：:\s]{0,4}([^\n，。；]{2,40})/,
@@ -3071,7 +3116,7 @@ function extractPropertyPriceAndSize(text) {
     // 价格：总价680万、售价280万、成交价300万、报价、底价、急售价、实收价、挂牌价、680万元
     const priceKeywords = '总价|总金额|总售价|总房价|售价|房价|价格|成交价|报价|底价|急售价|实收价|挂牌价|总价约|约售价|开价|卖价|房屋总价|房产总价';
     const pricePat = [
-        new RegExp(`(?:${priceKeywords})\\s*[:：]?\\s*([\\d.]+)\\s*(?:万元|万|w|W|元)`, 'i'),
+        new RegExp(`(?:${priceKeywords})\\s*[:：]?\\s*([\\d.]+)\\s*(亿元|亿|万元|万|w|W|元)`, 'i'),
         /([\d.]+)\s*万元\s*(?:总价|总金额|总售价|售价|成交价|报价)/,
         /([\d.]+)\s*(?:万元|万)/,
         new RegExp(`(?:${priceKeywords})\\s*[:：]?\\s*([\\d.]+)`, 'i'),
@@ -3083,7 +3128,9 @@ function extractPropertyPriceAndSize(text) {
             // 排除明显不是房价的数字（如面积、楼层、户型）
             if (v <= 0) continue;
             if (v < 3 && !/总价|售价|成交价|报价/.test(m[0])) continue; // 太小可能是楼层/房间数
-            result.price = m[1];
+            // "亿"单位 → 换算成万元（表单单位是万）
+            if (m[2] && /亿/.test(m[2])) result.price = String(v * 10000);
+            else result.price = m[1];
             break;
         }
     }
