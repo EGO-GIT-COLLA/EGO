@@ -8661,6 +8661,22 @@ async function cloudSyncUpload() {
             tags: (tags && tags.length) ? tags : (cloud.tags || []),
             _deletedIds: mergeTomb(tomb, cloud._deletedIds || {})
         };
+        // ===== 防丢图：本机该条图片为空（本机 IndexedDB 缺图）但云端该条有图 → 保留云端图，无图设备不得覆盖带图数据 =====
+        const _protectCloudImages = function (merged, cloudArr) {
+            const cmap = {};
+            (cloudArr || []).forEach(function (x) { if (x && (x.id || x._id)) cmap[x.id || x._id] = x; });
+            (merged || []).forEach(function (x) {
+                if (!x || !(x.id || x._id)) return;
+                const c = cmap[x.id || x._id];
+                if (!c) return;
+                const loc = Array.isArray(x.images) ? x.images : [];
+                const cld = Array.isArray(c.images) ? c.images : [];
+                if (!loc.length && cld.length) x.images = cld.slice();
+            });
+            return merged;
+        };
+        payload.properties = _protectCloudImages(payload.properties, cloud.properties || []);
+        payload.customers = _protectCloudImages(payload.customers, cloud.customers || []);
         f.data = await _ghEncrypt(JSON.stringify(payload), key);
         await _writeUserData(session.user.email, f, rec.sha);
         localStorage.setItem(CLOUD_LAST_SYNC_KEY, String(Date.now()));
@@ -9060,6 +9076,27 @@ async function cloudPullMyCustomers() {
                 p.images = await stashImages(p.images);
             }
         }
+        // ===== 补图：账号数据历史缺图时，从公开数据 public.json 按 id 补充（跨设备图片恢复） =====
+        try {
+            const pubRec = await ghReadFile('public.json');
+            if (pubRec && pubRec.data && Array.isArray(pubRec.data.properties)) {
+                const pubById = {};
+                for (const pp of pubRec.data.properties) {
+                    if (pp && (pp.id || pp._id)) pubById[pp.id || pp._id] = Array.isArray(pp.images) ? pp.images : [];
+                }
+                const _fillPub = async function (arr) {
+                    for (const x of (arr || [])) {
+                        if (!x || !(x.id || x._id)) continue;
+                        const cur = Array.isArray(x.images) ? x.images : [];
+                        if (cur.length) continue;
+                        const pi = pubById[x.id || x._id];
+                        if (Array.isArray(pi) && pi.length) x.images = await stashImages(pi);
+                    }
+                };
+                await _fillPub(customers);
+                await _fillPub(properties);
+            }
+        } catch (e) { console.warn('[ghSync] public.json 补图失败', e && e.message); }
         localStorage.setItem(CUS_STORAGE, JSON.stringify(customers));
         try { localStorage.setItem(CLOUD_CUS_CACHE, JSON.stringify({ ts: Date.now(), items: customers.length, cloudCnt: customers.length })); } catch (e) {}
         localStorage.setItem(PRO_STORAGE, JSON.stringify(properties.map(function (p) { try { return normalizeProperty(p); } catch (e) { return p; } })));
@@ -9084,6 +9121,9 @@ async function cloudPushMyCustomers() {
         const cus = loadCustomers() || [];
         const props = loadProperties() || [];
         const tags = loadProTags() || [];
+        // 上传前：图片 ID 解析成 base64（云端存完整含图数据）
+        for (const c of cus) c.images = await resolveImages(c.images || []);
+        for (const p of props) p.images = await resolveImages(p.images || []);
         const key = await _loadCryptoKey();
         if (!key) return;
         const rec = await _readUserData(session.user.email);
@@ -9104,6 +9144,22 @@ async function cloudPushMyCustomers() {
             tags: (tags && tags.length) ? tags : (cloud.tags || []),
             _deletedIds: mergeTomb(tomb, cloud._deletedIds || {})
         };
+        // ===== 防丢图：本机该条图片为空（本机 IndexedDB 缺图）但云端该条有图 → 保留云端图，无图设备不得覆盖带图数据 =====
+        const _protectCloudImages = function (merged, cloudArr) {
+            const cmap = {};
+            (cloudArr || []).forEach(function (x) { if (x && (x.id || x._id)) cmap[x.id || x._id] = x; });
+            (merged || []).forEach(function (x) {
+                if (!x || !(x.id || x._id)) return;
+                const c = cmap[x.id || x._id];
+                if (!c) return;
+                const loc = Array.isArray(x.images) ? x.images : [];
+                const cld = Array.isArray(c.images) ? c.images : [];
+                if (!loc.length && cld.length) x.images = cld.slice();
+            });
+            return merged;
+        };
+        payload.properties = _protectCloudImages(payload.properties, cloud.properties || []);
+        payload.customers = _protectCloudImages(payload.customers, cloud.customers || []);
         f.data = await _ghEncrypt(JSON.stringify(payload), key);
         await _writeUserData(session.user.email, f, rec.sha);
     } catch (e) { console.warn('[ghSync] 上传账号数据失败：', e.message); }
