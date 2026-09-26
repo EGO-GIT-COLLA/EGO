@@ -2586,6 +2586,15 @@
                 <div class="section-desc">皮肤主题 · 账号 · 数据备份</div>
             </div>
 
+            <!-- 🖼️ 图片修复（跨设备图片缺失一键修复） -->
+            <div class="sub-card">
+                <div class="sub-title"><span>🖼️ 图片修复</span></div>
+                <p class="backup-desc" style="font-size:12px;margin:4px 0;">换设备后缩略图/图片缺失时，点此从云端自动补齐并上传修复。</p>
+                <div style="display:flex;gap:8px;margin-top:6px;">
+                    <button type="button" onclick="fixMissingImages()" style="flex:1;min-width:140px;padding:11px;border:none;border-radius:8px;background:var(--accent,#1677ff);color:#fff;font-size:13px;cursor:pointer;font-weight:600;">🖼️ 修复缺失图片</button>
+                </div>
+            </div>
+
             <!-- 🎨 皮肤主题（默认折叠，点击展开） -->
             <div class="sub-card">
                 <details id="themeSection">
@@ -9088,7 +9097,10 @@ async function cloudPullMyCustomers() {
                     for (const x of (arr || [])) {
                         if (!x || !(x.id || x._id)) continue;
                         const cur = Array.isArray(x.images) ? x.images : [];
-                        if (cur.length) continue;
+                        if (cur.some(im => typeof im === 'string' && im.startsWith('data:image'))) continue; // 已有 base64 图
+                        let resolved = [];
+                        try { resolved = await resolveImages(cur); } catch (e) {}
+                        if (resolved.length) continue; // 引用能在本地 IndexedDB 解析出图
                         const pi = pubById[x.id || x._id];
                         if (Array.isArray(pi) && pi.length) x.images = await stashImages(pi);
                     }
@@ -9459,6 +9471,52 @@ function renderHeaderUser() {
         if (emailEl) emailEl.textContent = '点击备份页注册/登录';
     }
 }
+// 🖼️ 一键修复缺失图片：从 public.json 强制补图到本地，并上传修复云端账号数据
+async function fixMissingImages() {
+    const session = authGetSession();
+    if (!session || !session.user || !session.user.email) { toast('⚠️ 请先登录账号'); return; }
+    toast('🔍 正在检查并修复图片…');
+    try {
+        const pubRec = await ghReadFile('public.json');
+        if (!pubRec || !pubRec.data || !Array.isArray(pubRec.data.properties)) {
+            toast('❌ 云端公开数据读取失败，请确认已登录且网络正常');
+            return;
+        }
+        const pubById = {};
+        for (const pp of pubRec.data.properties) {
+            if (pp && (pp.id || pp._id)) pubById[pp.id || pp._id] = Array.isArray(pp.images) ? pp.images : [];
+        }
+        const props = loadProperties() || [];
+        const cus = loadCustomers() || [];
+        let fixed = 0;
+        const fixOne = async function (x) {
+            if (!x || !(x.id || x._id)) return;
+            const cur = Array.isArray(x.images) ? x.images : [];
+            if (cur.some(im => typeof im === 'string' && im.startsWith('data:image'))) return;
+            let resolved = [];
+            try { resolved = await resolveImages(cur); } catch (e) {}
+            if (resolved.length) return; // 本地 IndexedDB 能解析出图
+            const pi = pubById[x.id || x._id];
+            if (Array.isArray(pi) && pi.length) { x.images = await stashImages(pi); fixed++; }
+        };
+        for (const p of props) await fixOne(p);
+        for (const c of cus) await fixOne(c);
+        localStorage.setItem(PRO_STORAGE, JSON.stringify(props));
+        localStorage.setItem(CUS_STORAGE, JSON.stringify(cus));
+        try { renderPropertyList && renderPropertyList(); } catch (e) {}
+        try { renderCustomerList && renderCustomerList(); } catch (e) {}
+        try { lazyLoadCovers && lazyLoadCovers(); } catch (e) {}
+        let upOk = false;
+        try { upOk = await cloudSyncNow(); } catch (e) {}
+        if (fixed) toast('✅ 已从云端补回 ' + fixed + ' 条记录的图片，并已同步上传');
+        else if (upOk) toast('✅ 图片检查完毕：本地无缺失，已同步云端');
+        else toast('⚠️ 本地无缺失图片，但云端同步失败，请稍后重试');
+    } catch (e) {
+        console.error('[fixImg]', e);
+        toast('❌ 修复失败：' + (e && e.message ? e.message : '未知错误'));
+    }
+}
+
 /** 点击顶栏头像 → 切到备份 tab（账号管理） */
 function headerUserClick(ev) {
     try { ev && ev.stopPropagation && ev.stopPropagation(); } catch (e) {}
