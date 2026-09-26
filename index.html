@@ -2885,9 +2885,63 @@ function parsePropertyOcr(raw) {
     if (result.owner === '王') result.owner = '王姐';
     if (result.owner === '李') result.owner = '李姐';
     if (result.owner === '张') result.owner = '张姐';
-    // 标签：一律不自动生成（用户多次要求"不要自动新增标签"）——只填字段，标签由用户手动点击选择
-    result.tags = [];
+    // 标签：从现有标签池精准匹配勾选（内置类型/价格档/回报率 + 用户自定义池），绝不新增
+    result.tags = matchExistingTags(result, text);
     return result;
+}
+
+// 粘贴识别标签：只从现有标签池精准匹配勾选，绝不新增（用户明确要求）
+function matchExistingTags(result, text) {
+    const t = safeStr(text).replace(/\s+/g, '');
+    const tags = [];
+    const addTag = (tag) => { if (tag && tags.indexOf(tag) < 0) tags.push(tag); };
+    // 1) 物业类型（内置类型池关键词匹配）
+    const typeRules = [
+        { kw: ['别墅', '独栋', '联排', '双拼', '叠墅', '院墅'], tag: '别墅' },
+        { kw: ['商铺', '铺位', '店面', '档口', '门面', '临街铺', '转角位', '旺铺', '铺面'], tag: '商铺' },
+        { kw: ['写字楼', '办公楼', '办公室', '甲级'], tag: '写字楼' },
+        { kw: ['洋房', '花园洋房'], tag: '洋房' },
+        { kw: ['商住楼', '商住'], tag: '商住楼' },
+        { kw: ['商业体', '商业中心', '综合体', '商场', '购物中心'], tag: '商业体' },
+        { kw: ['地皮', '厂房', '工业地', '地块'], tag: '地皮厂房' }
+    ];
+    for (const rule of typeRules) {
+        if (rule.kw.some(k => t.includes(k))) addTag(rule.tag);
+    }
+    // 租盘/售盘（从文本动作词判断，可同时勾选）
+    if (/出租|招租|可租|带租|旺租/.test(t)) addTag('租盘');
+    if (/出售|急售|总价|售价|可售|现售|转让/.test(t)) addTag('售盘');
+    // 2) 价格档（result.price 单位=万元）
+    if (result.price != null && result.price !== '' && !isNaN(Number(result.price))) {
+        const v = Number(result.price);
+        for (const p of PRO_PRICE_TAGS) {
+            if (v >= p.min && v < p.max) { addTag(p.label); break; }
+        }
+    }
+    // 3) 回报率5%以上（文本明确写回报率>=5% 或直接含标签词）
+    const roiM = t.match(/回报率\s*[:：]?\s*([\d.]+)\s*%/);
+    if (roiM && Number(roiM[1]) >= 5) addTag('回报率5%以上');
+    else if (t.includes('回报率5%以上')) addTag('回报率5%以上');
+    // 4) 自定义标签池：粘贴文本包含该标签词 → 勾选（绝不新增到池）
+    try {
+        const all = loadProTags();
+        if (Array.isArray(all)) {
+            const builtinSet = new Set([
+                ...PRO_PRICE_TAGS.map(x => x.label),
+                ...PRO_TYPE_TAGS,
+                '回报率5%以上'
+            ]);
+            for (const tag of all) {
+                if (tag == null || tag === '') continue;
+                const s = String(tag);
+                if (PRO_MACHINE_TAGS.has(s)) continue;   // 机器残留标签一律不勾
+                if (builtinSet.has(s)) continue;
+                if (s.length < 2) continue;
+                if (t.includes(s)) addTag(s);
+            }
+        }
+    } catch (e) {}
+    return tags;
 }
 
 // 从盘源 OCR 原文里抽租金（月租 / 年租）+ 如果原文里有"回报率%"且有总价，则反推年租
