@@ -4628,13 +4628,18 @@ function similarPropertiesHtml(p, opts) {
 
 /* 房源预览弹窗 */
 function proPreview(id) {
-    const p = loadProperties().find(x => x.id === id);
+    const p = (loadProperties() || []).find(x => x.id === id);
+    if (!p) return;
+    showPropertyPreview(p);
+}
+
+function showPropertyPreview(p) {
     if (!p) return;
     // 点开查看也标记"最近活跃"
     if (!p.pinnedAt || (Date.now() - p.pinnedAt) > 30000) {
         try {
             const all = loadProperties();
-            const cur = all.find(x => x.id === id);
+            const cur = all.find(x => x.id === p.id);
             if (cur) { cur.pinnedAt = Date.now(); saveProperties(all); }
         } catch (e) {}
     }
@@ -4670,11 +4675,109 @@ function proPreview(id) {
         rows,
         postInfo: followupsBlockHtml(p.followups) + similarPropertiesHtml(p, { topN: 5 }),
         actions: [
+            { label: '📤 分享', cls: 'btn-ghost', style: 'color:var(--accent);border-color:var(--accent);', onClick: `shareProperty('${p.id}')` },
             { label: '💰 计算税费', cls: 'btn-primary', style: '', onClick: `calcTaxFromProperty('${p.id}')` },
             { label: '✏️ 编辑', cls: 'btn-ghost', style: 'color:#d4af37;border-color:#d4af37;', onClick: `closeGsPreview(); editProperty('${p.id}')` },
             { label: '🗑️ 删除', cls: 'btn-ghost', style: 'color:#dc5050;border-color:#dc5050;', onClick: `closeGsPreview(); deleteProperty('${p.id}')` }
         ]
     });
+}
+
+// ================= 房源分享 =================
+// 月租金（元/月）：兼容 rentType/rentValue 字段
+function monthlyRentYuanOf(p) {
+    if (!p) return NaN;
+    const raw = (p.rentValue == null || p.rentValue === '') ? NaN : Number(p.rentValue);
+    if (isNaN(raw) || raw < 0) return NaN;
+    const rentType = p.rentType || 'yearly';
+    if (rentType === 'monthly') return raw;
+    return (raw * 10000) / 12;
+}
+// 分享文案：完整信息，不含维护人/维护电话
+function sharePropertyText(p) {
+    if (!p) return '';
+    const L = [];
+    L.push('🏠 ' + (p.title || '房源'));
+    const priceWan = Number(p.totalPriceWan ?? p.price);
+    if (!isNaN(priceWan) && priceWan > 0) L.push('💰 总价：' + fmtWan(priceWan) + ' 万元');
+    const sizeNum = Number(p.area ?? p.size);
+    if (!isNaN(sizeNum) && sizeNum > 0) L.push('📐 面积：' + sizeNum.toLocaleString('zh-CN') + ' ㎡');
+    const up = unitPrice(p.totalPriceWan ?? p.price, p.area ?? p.size);
+    if (up) L.push('💵 单价：' + up.toLocaleString('zh-CN') + ' 元/㎡');
+    if (p.type) L.push('🏢 物业类型：' + p.type);
+    if (p.layout) L.push('🛏️ 户型：' + p.layout);
+    if (p.address) L.push('📍 地址：' + p.address);
+    const mr = monthlyRentYuanOf(p);
+    if (!isNaN(mr)) L.push('💴 月租金：' + mr.toFixed(0) + ' 元');
+    const yr = yearlyRentWanOf(p);
+    if (!isNaN(yr)) L.push('📈 年租金：' + yr.toLocaleString('zh-CN', { maximumFractionDigits: 2 }) + ' 万元');
+    const ror = rateOfReturnPct(p);
+    if (!isNaN(ror)) L.push('📈 年回报率：' + ror.toFixed(2) + ' %');
+    const tags = (p.tags || []).filter(Boolean);
+    if (tags.length) L.push('🏷️ 标签：' + tags.join(' · '));
+    if (p.note) L.push('📝 备注：' + p.note);
+    L.push('—— 来自「房产助手」');
+    return L.join('\n');
+}
+function fallbackCopyText(text) {
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+    } catch (e) { return false; }
+}
+function copyTextToClipboard(text) {
+    return new Promise(function (resolve) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function () { resolve(true); }).catch(function () { resolve(fallbackCopyText(text)); });
+        } else {
+            resolve(fallbackCopyText(text));
+        }
+    });
+}
+// 分享：优先调起系统分享面板（微信/QQ等），不可用则复制文案
+async function shareProperty(id) {
+    const p = (loadProperties() || []).find(x => x.id === id);
+    if (!p) return;
+    const text = sharePropertyText(p);
+    const url = location.origin + location.pathname + '#share=' + encodeURIComponent(p.id || '');
+    if (navigator.share) {
+        try {
+            await navigator.share({ title: '🏠 ' + (p.title || '房源分享'), text: text, url: url });
+            return;
+        } catch (e) {
+            if (e && e.name === 'AbortError') return; // 用户取消
+        }
+    }
+    await copyTextToClipboard(text);
+    toast('✅ 分享文案已复制，去微信粘贴发送即可');
+}
+// 打开分享链接：本地有直接弹窗；否则从公开数据 public.json 拉取该房源展示
+async function openSharedProperty(id) {
+    const local = (loadProperties() || []).find(x => x.id === id);
+    if (local) { showPropertyPreview(local); return; }
+    try {
+        const rec = await ghReadFile('public.json');
+        const arr = rec && rec.data && Array.isArray(rec.data.properties) ? rec.data.properties : [];
+        const p = arr.find(x => (x.id || x._id) === id);
+        if (p) showPropertyPreview(p);
+        else toast('未找到该房源');
+    } catch (e) { toast('加载分享房源失败，请检查网络'); }
+}
+function handleShareHash() {
+    try {
+        const h = decodeURIComponent(location.hash || '');
+        const m = h.match(/^#share=([^&]+)/);
+        if (m && m[1]) {
+            setTimeout(function () { openSharedProperty(decodeURIComponent(m[1])); }, 600);
+        }
+    } catch (e) {}
 }
 
 function _gsRemoveModal() {
@@ -7945,6 +8048,7 @@ function propertyCardHtml(p) {
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
                     <span class="muted">更新：${timeAgo(p.updatedAt || p.createdAt || Date.now())}</span>
                     <div class="item-actions" style="border:none; padding:0; margin:0;">
+                        <button class="btn-text" style="color:var(--accent);" onclick="event.stopPropagation(); shareProperty('${p.id}')">分享</button>
                         <button class="btn-text" onclick="event.stopPropagation(); editProperty('${p.id}')">编辑</button>
                         <button class="btn-text" style="color:var(--danger);" onclick="event.stopPropagation(); deleteProperty('${p.id}')">删除</button>
                     </div>
@@ -9871,6 +9975,7 @@ updateAuthUI();
                 .forEach(function (el) { el.parentNode && el.parentNode.removeChild(el); });
         } catch (e) {}
     }
+    handleShareHash();
     if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', rm); }
     else { rm(); }
     window.addEventListener('load', rm);
