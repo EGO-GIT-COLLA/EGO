@@ -2917,9 +2917,7 @@ function matchExistingTags(result, text) {
     for (const rule of typeRules) {
         if (rule.kw.some(k => t.includes(k))) addTag(rule.tag);
     }
-    // 租盘/售盘（从文本动作词判断，可同时勾选）
-    if (/出租|招租|可租|带租|旺租/.test(t)) addTag('租盘');
-    if (/出售|急售|总价|售价|可售|现售|转让/.test(t)) addTag('售盘');
+    // 租盘/售盘：不自动添加（用户手动选择），避免误贴标签
     // 2) 价格档（result.price 单位=万元）
     if (result.price != null && result.price !== '' && !isNaN(Number(result.price))) {
         const v = Number(result.price);
