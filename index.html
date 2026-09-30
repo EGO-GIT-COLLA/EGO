@@ -2529,7 +2529,10 @@
                     </div>
                 </div>
 
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
                 <button type="button" class="btn btn-primary" id="proSubmitBtn" onclick="submitProperty()">保存盘源</button>
+                <button type="button" class="btn btn-ghost" style="border-color:var(--accent);color:var(--accent);" onclick="submitProperty(true)">保存并分享</button>
+                </div>
                 <div class="err" id="proError"></div>
             </div>
             </div>
@@ -7719,7 +7722,7 @@ function _findDuplicateProperty(d, list) {
     }
     return null;
 }
-async function submitProperty() {
+async function submitProperty(shareAfter) {
     hideError('proError');
     const title = safeStr(document.getElementById('proTitle').value);
     if (!title) return showError('proError', '请填写房源标题 / 小区名');
@@ -7816,6 +7819,11 @@ async function submitProperty() {
     renderPropertyList();
     renderProTagFilter();
     toast(isEdit ? '✅ 已保存盘源修改' : '✅ 已新增盘源');
+    if (shareAfter && data && data.id) {
+        setTimeout(function () {
+            try { shareProperty(data.id); } catch (e) { toast('⚠️ 分享失败：' + (e && e.message)); }
+        }, 500);
+    }
 }
 
 async function editProperty(id) {
