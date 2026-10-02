@@ -3783,6 +3783,8 @@ function _gsEffectiveGroupsOf(tag) {
     const isCusBuiltin = (typeof CUS_TAGS !== 'undefined' && CUS_TAGS.indexOf(s) >= 0);
     const isPriceBuiltin = _gsIsPriceTag(s);
     const isTypeBuiltin = Array.isArray(PRO_TYPE_TAGS) && PRO_TYPE_TAGS.indexOf(s) >= 0;
+    // 回报率组：如「回报率5%以上」→ 按数值筛选（rateOfReturnPct >= 5），不依赖 tags 字符串
+    const isRoiBuiltin = /^回报率\d+(\.\d+)?%以上$/.test(s);
     // 先查快捷标签分组中是否出现（防止用户新建自定义标签后和重名也能正确分类）
     const groups = getGsQtGroups ? getGsQtGroups() : [];
     const appearInGroups = new Set();
@@ -3790,8 +3792,9 @@ function _gsEffectiveGroupsOf(tag) {
     if (appearInGroups.has('customer') || isCusBuiltin) out.push('customer');
     if (appearInGroups.has('price') || isPriceBuiltin) out.push('price');
     if (appearInGroups.has('type')  || isTypeBuiltin)  out.push('type');
-    // 非 price/type builtin 的任何标签，也作为 custom 生效 → 保证盘源 tags 数组里出现的任意标签都能被"AND 精准匹配"
-    if (!isPriceBuiltin && !isTypeBuiltin) {
+    if (appearInGroups.has('roi')   || isRoiBuiltin)   out.push('roi');
+    // 非 price/type/roi builtin 的任何标签，也作为 custom 生效 → 保证盘源 tags 数组里出现的任意标签都能被"AND 精准匹配"
+    if (!isPriceBuiltin && !isTypeBuiltin && !isRoiBuiltin) {
         if (!out.includes('custom')) out.push('custom');
     }
     // 没被分进任何内置组的自定义标签：fallback 到 custom
@@ -4104,8 +4107,8 @@ function _gsMatchCustomer(c) {
             const ok = Array.from(tagSet).some(t => my.indexOf(t) >= 0);
             if (!ok) return false;
         }
-        if (gk === 'price' || gk === 'type' || gk === 'custom') {
-            // 盘源相关筛选：对客源不做硬过滤，全部放行（因为客户不会有价格档/物业类型）
+        if (gk === 'price' || gk === 'type' || gk === 'custom' || gk === 'roi') {
+            // 盘源相关筛选：对客源不做硬过滤，全部放行（因为客户不会有价格档/物业类型/回报率）
             continue;
         }
     }
@@ -4140,6 +4143,19 @@ function _gsMatchProperty(p) {
             // 自定义标签：必须全部命中（因为是盘源的标签，AND 更精准）
             const my = new Set(p.tags || []);
             const ok = Array.from(tagSet).every(t => my.has(t));
+            if (!ok) return false;
+        }
+        if (gk === 'roi') {
+            // 回报率组：按实际回报率数值筛选（如「回报率5%以上」→ rateOfReturnPct >= 5）
+            const ror = rateOfReturnPct(p);
+            if (isNaN(ror)) return false;
+            let ok = false;
+            for (const label of tagSet) {
+                const m = String(label).match(/^回报率([\d.]+)%以上$/);
+                if (!m) continue;
+                const n = Number(m[1]);
+                if (!isNaN(n) && ror >= n) { ok = true; break; }
+            }
             if (!ok) return false;
         }
     }
