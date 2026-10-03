@@ -1283,13 +1283,13 @@
             line-height: 1.35;
             word-break: break-all;
         }
-        .star-filter-btn {
+        .star-filter-btn, .cust-sort-btn {
             padding: 4px 10px; border: 1px solid var(--border); border-radius: 14px;
             background: var(--card-bg); color: var(--text-main); font-size: 12px; cursor: pointer;
             transition: all .15s ease;
         }
-        .star-filter-btn:hover { border-color: var(--tag-a); }
-        .star-filter-btn.active {
+        .star-filter-btn:hover, .cust-sort-btn:hover { border-color: var(--tag-a); }
+        .star-filter-btn.active, .cust-sort-btn.active {
             background: var(--tag-a); border-color: var(--tag-a); color: #1a1a1a; font-weight: 600;
         }
         .cus-star {
@@ -2407,6 +2407,13 @@
                     <button type="button" class="star-filter-btn" data-val="3" onclick="setCusStarFilter(3)">⭐⭐⭐ 三星</button>
                     <span style="flex:1;"></span>
                     <button class="btn-text" onclick="clearCusFilter()">清空</button>
+                </div>
+                <!-- 客源排序切换：随机 / 录入时间 / 最新跟进 -->
+                <div style="margin-top:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <span class="k" style="font-size:12px; color:var(--text-hint);">排序：</span>
+                    <button type="button" class="cust-sort-btn" data-m="random" onclick="setCustSortMode('random')">🔀 随机</button>
+                    <button type="button" class="cust-sort-btn" data-m="created" onclick="setCustSortMode('created')">🕘 录入时间</button>
+                    <button type="button" class="cust-sort-btn" data-m="follow" onclick="setCustSortMode('follow')">💬 最新跟进</button>
                 </div>
             </div>
             </div>
@@ -7151,6 +7158,38 @@ function _seededShuffle(arr, seed) {
     return a;
 }
 /* 最近点开/新增（pinnedAt）的 1 个固定在最前，其余全部随机打乱 */
+/* ===== 客源排序：随机 / 录入时间 / 最新跟进 ===== */
+const CUST_SORT_STORAGE = 're_cust_sort_v1';
+let custSortMode = (function () {
+    try { const v = localStorage.getItem(CUST_SORT_STORAGE); return (v === 'created' || v === 'follow') ? v : 'random'; }
+    catch (e) { return 'random'; }
+})();
+function setCustSortMode(m) {
+    if (m !== 'created' && m !== 'follow') m = 'random';
+    custSortMode = m;
+    try { localStorage.setItem(CUST_SORT_STORAGE, m); } catch (e) {}
+    document.querySelectorAll('.cust-sort-btn').forEach(b => b.classList.toggle('active', b.dataset.m === custSortMode));
+    renderCustomerList();
+}
+/* 客源最近一条跟进的时间戳（无跟进则回退到 updatedAt/createdAt） */
+function _lastFollowTimeOf(c) {
+    let mx = 0;
+    if (Array.isArray(c.followups)) {
+        c.followups.forEach(f => { if (f && f.time && f.time > mx) mx = f.time; });
+    }
+    return mx || c.updatedAt || c.createdAt || 0;
+}
+/* 按所选排序模式排列表格（random 由 _recentFirstThenShuffle 处理，这里返回原数组） */
+function _sortCustomers(list) {
+    if (!Array.isArray(list) || list.length <= 1) return list;
+    if (custSortMode === 'created') {
+        return list.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    }
+    if (custSortMode === 'follow') {
+        return list.slice().sort((a, b) => _lastFollowTimeOf(b) - _lastFollowTimeOf(a));
+    }
+    return list;
+}
 function _recentFirstThenShuffle(arr, recentCount) {
     if (!Array.isArray(arr) || arr.length <= 1) return arr;
     const n = Math.max(1, recentCount || 1);
@@ -7169,6 +7208,8 @@ function renderCustomerList() {
     const kw = safeStr(document.getElementById('cusSearch').value).toLowerCase();
     // 星级筛选按钮状态同步
     document.querySelectorAll('.star-filter-btn').forEach(b => b.classList.toggle('active', Number(b.dataset.val) === cusStarFilter));
+    // 排序按钮状态同步
+    document.querySelectorAll('.cust-sort-btn').forEach(b => b.classList.toggle('active', b.dataset.m === custSortMode));
     // 筛选/搜索变化 → 重置页码和折叠（用 hash 兜底）
     const filterHash = kw || '|';
     if (window.__cusLastFilterHash !== filterHash) {
@@ -7178,8 +7219,9 @@ function renderCustomerList() {
     let filtered = kw ? list.filter(c => cusHaystack(c).includes(kw)) : list;
     // 星级快速筛选（0=全部）
     if (cusStarFilter > 0) filtered = filtered.filter(c => (c.star || 0) === cusStarFilter);
-    // 最近点开/新增的前几位固定在最前，其余随机打乱（每次打开随机，方便加深记忆）
-    filtered = _recentFirstThenShuffle(filtered, 1);
+    // 排序：随机（最近点开/新增的第1位固定最前，其余随机）/ 录入时间 / 最新跟进
+    if (custSortMode === 'random') filtered = _recentFirstThenShuffle(filtered, 1);
+    else filtered = _sortCustomers(filtered);
 
     const host = document.getElementById('cusList');
     if (filtered.length === 0) {
