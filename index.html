@@ -6587,7 +6587,7 @@ function copyLoanResult() {
  * 图片上传 / 压缩 / 预览（客源 & 盘源共用）
  * ======================================================= */
 const IMG_MAX_COUNT = 9;            // 单条最多图片数
-const IMG_THUMB_MAX = 480;          // 压缩缩略图最大边长（封面/存储均使用此压缩图）
+const IMG_THUMB_MAX = 1600;         // 上传存储图最大边长（封面/存储均使用此压缩图，高清）
 const IMG_COVER_MAX = 800;          // 大图预览时按需再放大（实际上直接用压缩图也可）
 let cusImages = [];   // 客源表单当前图片（base64，不含前缀也行，统一存 dataURL）
 let proImages = [];   // 盘源表单当前图片
@@ -6852,7 +6852,7 @@ function attachImageInput(inputId, previewId) {
         toRead.forEach(file => {
             const reader = new FileReader();
             reader.onload = function (ev) {
-                compressImage(ev.target.result, IMG_THUMB_MAX, 0.58, function (dataUrl) {
+                compressImage(ev.target.result, IMG_THUMB_MAX, 0.85, function (dataUrl) {
                     next.push(dataUrl);
                     pending--;
                     if (pending <= 0) {
