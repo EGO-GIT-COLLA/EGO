@@ -6687,7 +6687,12 @@ async function lazyLoadCovers() {
         if (id.startsWith('data:')) { img.src = id; img.removeAttribute('data-img-id'); continue; }
         const d = await idbGetImage(id);
         if (d) { img.src = d; img.removeAttribute('data-img-id'); }
-        else { img.style.display = 'none'; }
+        else {
+            // 取不到原图时显示占位（避免整块空白被误认为故障），点击仍可看详情
+            img.style.opacity = '0.5';
+            img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120"><rect width="160" height="120" fill="#eef0f3" rx="10"/><circle cx="80" cy="48" r="18" fill="none" stroke="#b9c2cc" stroke-width="3"/><rect x="58" y="38" width="44" height="32" rx="6" fill="none" stroke="#b9c2cc" stroke-width="3"/><path d="M52 66 L108 66 L96 88 L64 88 Z" fill="#c9d2db"/><text x="80" y="106" font-size="12" text-anchor="middle" fill="#8a94a0">图片待同步</text></svg>');
+            img.removeAttribute('data-img-id');
+        }
     }
 }
 
