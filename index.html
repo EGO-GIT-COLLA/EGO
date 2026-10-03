@@ -4715,6 +4715,7 @@ function showPropertyPreview(p) {
         actions: [
             { label: '📤 分享', cls: 'btn-ghost', style: 'color:var(--accent);border-color:var(--accent);', onClick: `shareProperty('${p.id}')` },
             { label: '💰 计算税费', cls: 'btn-primary', style: '', onClick: `calcTaxFromProperty('${p.id}')` },
+            { label: '🏦 计算房贷', cls: 'btn-primary', style: '', onClick: `calcLoanFromProperty('${p.id}')` },
             { label: '✏️ 编辑', cls: 'btn-ghost', style: 'color:#d4af37;border-color:#d4af37;', onClick: `closeGsPreview(); editProperty('${p.id}')` },
             { label: '🗑️ 删除', cls: 'btn-ghost', style: 'color:#dc5050;border-color:#dc5050;', onClick: `closeGsPreview(); deleteProperty('${p.id}')` }
         ]
@@ -6018,6 +6019,29 @@ function calcTaxFromProperty(id) {
         setTaxType('residential');
     }
     setTimeout(() => { calcTax(); toast('✅ 已自动填入盘源信息并计算'); }, 200);
+}
+
+/* 从盘源弹窗跳转计算房贷：自动填总价，按物业类型选 住宅/商业 利率口径 */
+function calcLoanFromProperty(id) {
+    const p = loadProperties().find(x => x.id === id);
+    if (!p) { toast('⚠️ 未找到盘源'); return; }
+    closeGsPreview();
+    switchTab('calc');
+    switchToolView('loan');
+    // 填入房产总价（loadProperties 已 normalize，totalPriceWan 单位万元）
+    const price = Number(p.totalPriceWan);
+    if (!isNaN(price) && price > 0) {
+        document.getElementById('loanTotalPrice').value = price;
+        if (typeof updateLoanAmount === 'function') updateLoanAmount();
+    }
+    // 物业类型：商铺/写字楼/公寓/商业/车位 → 商业性质（利率4.1%、首付30%、纯商贷）；其余按住宅
+    const type = (p.type || '').toLowerCase();
+    if (type.includes('商铺') || type.includes('写字楼') || type.includes('公寓') || type.includes('商业') || type.includes('车位')) {
+        if (typeof setLoanPropType === 'function') setLoanPropType('biz');
+    } else {
+        if (typeof setLoanPropType === 'function') setLoanPropType('resi');
+    }
+    setTimeout(() => { if (typeof calcLoan === 'function') calcLoan(); toast('✅ 已自动填入盘源信息并计算房贷'); }, 200);
 }
 
 /* 生成可复制的税费明细文本 */
