@@ -2499,15 +2499,6 @@
                     <div class="hint" id="proRentHint">例如：6 表示每年 6 万元</div>
                 </div>
 
-                <div class="form-group" style="margin-bottom:14px;">
-                    <label>📍 房源位置 <span class="muted">（定位后可在「🗺️ 地图」视图直观查看，详情里一键导航）</span></label>
-                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                        <button type="button" class="btn btn-ghost" onclick="locateProPosition()">📡 获取当前位置定位</button>
-                        <button type="button" class="btn btn-ghost" id="proLocClear" style="display:none;" onclick="clearProLoc()">清除定位</button>
-                    </div>
-                    <div class="hint" id="proLocInfo">未定位（定位后保存即可在地图视图显示）</div>
-                </div>
-
                 <div class="form-group">
                     <label>盘源标签 <span class="muted">（点击选中/取消；价格和类型为系统内置，不可删改；自定义标签用下方输入框新增，点标签旁 ✏️改名 / 🗑️删除）</span></label>
                     <div class="chips" id="proTagChips"></div>
@@ -2547,7 +2538,6 @@
 
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
                 <button type="button" class="btn btn-primary" id="proSubmitBtn" onclick="submitProperty()">保存盘源</button>
-                <button type="button" class="btn btn-ghost" style="border-color:var(--accent);color:var(--accent);" onclick="submitProperty(true)">保存并分享</button>
                 </div>
                 <div class="err" id="proError"></div>
             </div>
@@ -2558,13 +2548,10 @@
             <div class="pro-mode-bar">
                 <button type="button" class="pro-mode-btn" data-mode="folder" onclick="setProListMode('folder')">📂 按类型分类</button>
                 <button type="button" class="pro-mode-btn active" data-mode="flat" onclick="setProListMode('flat')">📋 全部平铺</button>
-                <button type="button" class="pro-mode-btn" data-mode="map" onclick="setProListMode('map')">🗺️ 地图</button>
             </div>
 
             <!-- 房源列表（打开页面先看数据） -->
             <div id="proList"></div>
-            <!-- 地图视图（有定位的房源直接显示在地图上） -->
-            <div id="proMapWrap" style="display:none;"></div>
 
             <!-- 搜索 + 标签筛选（在页面下方，手机底部手指够得到） -->
             <div class="section-title" style="margin-top:22px;">
@@ -4703,7 +4690,6 @@ function showPropertyPreview(p) {
         ['年回报率', (!isNaN(rorPct) && rorPct > 0) ? rorPct.toFixed(2) + '%' : '-'],
         ['维护人', p.owner || ''],
         ['电话', p.phone || ''],
-        ['📍 位置', proLocLinkHtml(p), true],
         ['标签', tags, true],
         ['备注', p.note || ''],
         ['更新时间', p.updatedAt ? new Date(p.updatedAt).toLocaleString('zh-CN') : '']
@@ -4716,7 +4702,6 @@ function showPropertyPreview(p) {
         rows,
         postInfo: followupsBlockHtml(p.followups) + similarPropertiesHtml(p, { topN: 5 }),
         actions: [
-            { label: '📤 分享', cls: 'btn-ghost', style: 'color:var(--accent);border-color:var(--accent);', onClick: `shareProperty('${p.id}')` },
             { label: '💰 计算税费', cls: 'btn-primary', style: '', onClick: `calcTaxFromProperty('${p.id}')` },
             { label: '🏦 计算房贷', cls: 'btn-primary', style: '', onClick: `calcLoanFromProperty('${p.id}')` },
             { label: '✏️ 编辑', cls: 'btn-ghost', style: 'color:#d4af37;border-color:#d4af37;', onClick: `closeGsPreview(); editProperty('${p.id}')` },
@@ -8021,8 +8006,6 @@ async function submitProperty(shareAfter) {
         tags: Array.from(finalTags),
         images: await stashImages(proImages),
         followups: proFollowups.slice(),
-        lat: (proLat === '' || proLng === '') ? '' : Number(proLat),
-        lng: (proLat === '' || proLng === '') ? '' : Number(proLng),
         pinnedAt: Date.now(),
         updatedAt: Date.now(),
         createdAt: proEditingId ? 0 : Date.now()
@@ -8073,11 +8056,6 @@ async function submitProperty(shareAfter) {
     renderPropertyList();
     renderProTagFilter();
     toast(isEdit ? '✅ 已保存盘源修改' : '✅ 已新增盘源');
-    if (shareAfter && data && data.id) {
-        setTimeout(function () {
-            try { shareProperty(data.id); } catch (e) { toast('⚠️ 分享失败：' + (e && e.message)); }
-        }, 500);
-    }
 }
 
 async function editProperty(id) {
@@ -8122,8 +8100,6 @@ async function editProperty(id) {
     proImages = await resolveImages(Array.isArray(p.images) ? p.images : []);
     renderImagePreview(proImages, 'proImagePreview');
     // 定位回填
-    proLat = (p.lat === undefined || p.lat === null || p.lat === '') ? '' : Number(p.lat);
-    proLng = (p.lng === undefined || p.lng === null || p.lng === '') ? '' : Number(p.lng);
     updateProLocUI();
     renderProTagChips();
     // 切到录入子视图并滚到表单
@@ -8315,8 +8291,6 @@ function propertyCardHtml(p) {
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
                     <span class="muted">更新：${timeAgo(p.updatedAt || p.createdAt || Date.now())}</span>
                     <div class="item-actions" style="border:none; padding:0; margin:0;">
-                        <button class="btn-text" title="在地图上查看/导航" onclick="event.stopPropagation(); openProLocation('${p.id}')">📍</button>
-                        <button class="btn-text" style="color:var(--accent);" onclick="event.stopPropagation(); shareProperty('${p.id}')">分享</button>
                         <button class="btn-text" onclick="event.stopPropagation(); editProperty('${p.id}')">编辑</button>
                         <button class="btn-text" style="color:var(--danger);" onclick="event.stopPropagation(); deleteProperty('${p.id}')">删除</button>
                     </div>
@@ -8325,174 +8299,6 @@ function propertyCardHtml(p) {
             ${cover}
         </div>
     `;
-}
-
-/* ==================== 地图 & 定位 ==================== */
-let proLat = '', proLng = '';   // 表单当前定位坐标
-/* 坐标有效性判断：空字符串 / null / undefined / NaN 一律视为未定位（Number('') 会变 0，必须防） */
-function _hasCoords(p) {
-    if (!p) return false;
-    const la = p.lat, ln = p.lng;
-    if (la === undefined || la === null || la === '') return false;
-    if (ln === undefined || ln === null || ln === '') return false;
-    return isFinite(Number(la)) && isFinite(Number(ln));
-}
-function updateProLocUI() {
-    const el = document.getElementById('proLocInfo');
-    const clr = document.getElementById('proLocClear');
-    if (!el) return;
-    if (proLat !== '' && proLng !== '') {
-        el.innerHTML = '✅ 已定位：<b>' + Number(proLat).toFixed(5) + ', ' + Number(proLng).toFixed(5) + '</b>，保存后即可在「🗺️ 地图」视图显示';
-        if (clr) clr.style.display = '';
-    } else {
-        el.innerHTML = '未定位（定位后保存即可在地图视图显示）';
-        if (clr) clr.style.display = 'none';
-    }
-}
-function locateProPosition() {
-    if (!navigator.geolocation) { toast('⚠️ 当前浏览器不支持定位'); return; }
-    toast('⏳ 正在获取定位…');
-    navigator.geolocation.getCurrentPosition(function (pos) {
-        proLat = Number(pos.coords.latitude);
-        proLng = Number(pos.coords.longitude);
-        updateProLocUI();
-        toast('✅ 已定位：' + proLat.toFixed(5) + ', ' + proLng.toFixed(5));
-    }, function (err) {
-        let msg = '定位失败';
-        if (err && err.code === 1) msg = '定位被拒绝，请在浏览器设置中允许位置权限';
-        else if (err && err.code === 2) msg = '暂时无法获取位置，请稍后重试';
-        else if (err && err.code === 3) msg = '定位超时，请重试';
-        toast('⚠️ ' + msg);
-    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
-}
-function clearProLoc() {
-    proLat = ''; proLng = '';
-    updateProLocUI();
-}
-/* 打开外部地图（高德）：有坐标直接定位到点，无坐标按地址搜索 */
-function openProLocation(id) {
-    const p = (loadProperties() || []).find(x => x.id === id);
-    if (!p) return;
-    openAmapFor(p);
-}
-function openAmapFor(p) {
-    if (!p) return;
-    let url;
-    if (_hasCoords(p)) {
-        const la = Number(p.lat), ln = Number(p.lng);
-        url = 'https://uri.amap.com/marker?position=' + ln + ',' + la + '&name=' + encodeURIComponent(p.title || '房源位置') + '&callnative=1';
-    } else {
-        const kw = [p.title, p.proArea, p.address].filter(Boolean).join(' ');
-        url = 'https://uri.amap.com/search?keyword=' + encodeURIComponent(kw || '房源位置') + '&callnative=1';
-    }
-    const a = document.createElement('a');
-    a.href = url; a.target = '_blank'; a.rel = 'noopener';
-    document.body.appendChild(a); a.click(); a.remove();
-}
-/* 弹窗里的位置链接 HTML */
-function proLocLinkHtml(p) {
-    if (!p) return '';
-    if (_hasCoords(p)) {
-        const la = Number(p.lat), ln = Number(p.lng);
-        const url = 'https://uri.amap.com/marker?position=' + ln + ',' + la + '&name=' + encodeURIComponent(p.title || '房源位置') + '&callnative=1';
-        return '<a href="' + url + '" target="_blank" rel="noopener" style="color:var(--tag-a);font-weight:600;">📍 已定位 · 点击打开地图导航 ➜</a>';
-    }
-    const kw = [p.title, p.proArea, p.address].filter(Boolean).join(' ');
-    const url = 'https://uri.amap.com/search?keyword=' + encodeURIComponent(kw || '房源位置') + '&callnative=1';
-    return '<a href="' + url + '" target="_blank" rel="noopener" style="color:var(--tag-a);font-weight:600;">📍 未定位 · 点击在地图搜索位置 ➜</a>';
-}
-/* 地图视图：Leaflet + OpenStreetMap，有定位的房源全部打点 */
-let __proLeafletMap = null, __proLeafletMarkers = [];
-function renderPropertyMap() {
-    const wrap = document.getElementById('proMapWrap');
-    if (!wrap) return;
-    const list = loadProperties();
-    // 销毁旧地图（容器每次重建）
-    if (__proLeafletMap) { try { __proLeafletMap.remove(); } catch (e) {} __proLeafletMap = null; __proLeafletMarkers = []; }
-    // 应用当前列表筛选（与列表视图完全一致：总价OR、类型OR、其它标签AND、关键词AND）——地图模式搜索/筛选同样生效
-    let mapped = list.filter(p => _hasCoords(p));
-    if (proFilterPrices.size > 0) {
-        mapped = mapped.filter(p => {
-            const n = Number(p.totalPriceWan ?? p.price);
-            let hit = false;
-            for (const label of proFilterPrices) {
-                const target = PRO_PRICE_TAGS.find(x => x.label === label)
-                            || (typeof _gsParsePriceTagLabel === 'function' ? _gsParsePriceTagLabel(label) : null);
-                if (!target) continue;
-                if (!isNaN(n) && n >= 0 && (n >= target.min && (target.max === Infinity ? true : n < target.max))) { hit = true; break; }
-            }
-            return hit;
-        });
-    }
-    if (proFilterTypes.size > 0) {
-        mapped = mapped.filter(p => {
-            const pTags = new Set(p.tags || []);
-            if (p.type) pTags.add(p.type);
-            return Array.from(proFilterTypes).some(t => pTags.has(t));
-        });
-    }
-    if (proFilterTags.size > 0) {
-        mapped = mapped.filter(p => {
-            const pTags = new Set(p.tags || []);
-            return Array.from(proFilterTags).every(t => pTags.has(t));
-        });
-    }
-    const mapKw = safeStr(document.getElementById('proSearch').value).toLowerCase();
-    if (mapKw) mapped = mapped.filter(p => proHaystack(p).includes(mapKw));
-    const totalWithCoords = list.filter(p => _hasCoords(p)).length;
-    const unMapped = list.length - totalWithCoords;
-    const filterOn = (proFilterPrices.size > 0 || proFilterTypes.size > 0 || proFilterTags.size > 0 || mapKw);
-    wrap.style.display = '';
-    wrap.innerHTML = '<div style="font-size:12px;color:var(--text-hint);margin:0 2px 8px;line-height:1.7;">🗺️ 地图视图：显示 <b style="color:var(--tag-a);">' + mapped.length + '</b> / ' + list.length + ' 套房源' + (filterOn ? '（已按当前搜索/筛选过滤）' : '') + ' · 点标记看房源，点「查看详情」进详情'
-        + (unMapped > 0 ? '<br><span style="color:#b26a00;">⚠️ ' + unMapped + ' 套未定位，不会显示在地图（录入/编辑时点「📡 获取当前位置定位」即可）</span>' : '') + '</div>'
-        + '<div id="proMapCanvas" style="height:62vh;border-radius:14px;overflow:hidden;border:1px solid var(--border);background:#e8eaed;z-index:0;"></div>'
-        + '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;"><button class="btn btn-ghost" onclick="setProListMode(\'flat\')">← 返回列表</button></div>';
-    if (typeof L === 'undefined') {
-        wrap.innerHTML = '<div style="font-size:12px;color:var(--text-hint);margin-bottom:8px;">🗺️ 地图视图（' + mapped.length + ' / ' + list.length + ' 套已定位）</div>'
-            + '<div class="list-empty">地图组件加载失败（网络原因，CDN 未加载成功）。<br>可以先返回列表视图，在房源详情里用「📍 点击打开地图导航」一样能查看位置。</div>'
-            + '<div style="margin-top:8px;"><button class="btn btn-ghost" onclick="setProListMode(\'flat\')">← 返回列表</button></div>';
-        return;
-    }
-    const canvas = document.getElementById('proMapCanvas');
-    if (!canvas) return;
-    // 默认视野：广州
-    __proLeafletMap = L.map('proMapCanvas', { zoomControl: true }).setView([23.13, 113.26], 11);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(__proLeafletMap);
-    mapped.forEach(function (p) {
-        if (!_hasCoords(p)) return;
-        const la = Number(p.lat), ln = Number(p.lng);
-        const imgs = Array.isArray(p.images) ? p.images.filter(Boolean) : [];
-        const thumb = imgs.length > 0
-            ? '<img src="' + escapeHTML(imgs[0]) + '" style="width:100%;height:90px;object-fit:cover;border-radius:8px;margin-bottom:6px;" onerror="this.style.display=\'none\'">'
-            : '';
-        const priceWan = Number(p.totalPriceWan ?? p.price);
-        const ror = rateOfReturnPct(p);
-        const popupHtml = '<div style="min-width:150px;max-width:210px;font-size:12.5px;line-height:1.6;">'
-            + thumb
-            + '<div style="font-weight:700;font-size:13px;margin-bottom:2px;">' + escapeHTML(p.title || '未命名房源') + '</div>'
-            + (!isNaN(priceWan) && priceWan > 0 ? '<div>💰 总价：<b>' + fmtWan(priceWan) + '</b></div>' : '')
-            + (p.size ? '<div>📐 面积：' + Number(p.size).toLocaleString('zh-CN') + ' ㎡</div>' : '')
-            + (!isNaN(ror) ? '<div>📈 回报率：<b style="color:#d4af37;">' + ror.toFixed(2) + '%</b></div>' : '')
-            + '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">'
-            + '<button class="btn-text" style="color:var(--accent);" onclick="event.stopPropagation(); proPreview(\'' + escapeHTML(p.id) + '\')">查看详情</button>'
-            + '<button class="btn-text" onclick="event.stopPropagation(); openProLocation(\'' + escapeHTML(p.id) + '\')">导航 ➜</button>'
-            + '</div></div>';
-        const mk = L.marker([la, ln]).addTo(__proLeafletMap).bindPopup(popupHtml, { maxWidth: 260 });
-        __proLeafletMarkers.push(mk);
-    });
-    if (mapped.length > 0) {
-        try {
-            const bounds = L.latLngBounds(mapped.map(p => [Number(p.lat), Number(p.lng)]));
-            __proLeafletMap.fitBounds(bounds, { padding: [36, 36], maxZoom: 15 });
-        } catch (e) {}
-    } else if (filterOn) {
-        // 筛选后没有已定位的房源：保持广州视野并提示
-        try { __proLeafletMap.setView([23.13, 113.26], 11); } catch (e) {}
-        wrap.innerHTML = '<div style="font-size:12px;color:var(--text-hint);margin:0 2px 8px;">🗺️ 地图视图：显示 <b style="color:var(--tag-a);">0</b> / ' + list.length + ' 套房源（当前搜索/筛选下没有已定位的房源）</div>'
-            + '<div class="list-empty">当前筛选/关键词下没有可显示在地图的房源。<br>试试减少筛选条件，或返回「📋 列表」查看全部结果。</div>'
-            + '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;"><button class="btn btn-ghost" onclick="clearProFilter(); renderPropertyMap();">清空筛选</button><button class="btn btn-ghost" onclick="setProListMode(\'flat\')">← 返回列表</button></div>';
-    }
-    setTimeout(function () { if (__proLeafletMap) __proLeafletMap.invalidateSize(); }, 150);
 }
 
 // 计算一条盘源应归入的"物业类型文件夹"名（按其命中的类型标签；命中多个取第一个；都没有归入"其它"）
@@ -8566,13 +8372,9 @@ function proFolderDrop(e) {
 function setProListMode(mode) {
     proListMode = mode;
     document.querySelectorAll('.pro-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
-    if (mode === 'map') renderPropertyMap();
-    else renderPropertyList();
 }
 
 function renderPropertyList() {
-    // 地图模式：直接渲染地图视图
-    if (proListMode === 'map') { renderPropertyMap(); return; }
     const list = loadProperties();
     document.getElementById('proCount').textContent = list.length;
     const navCnt = document.getElementById('proListNavCnt');
@@ -10440,7 +10242,5 @@ updateAuthUI();
         </div>
     </div>
 </div>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 </body>
 </html>
