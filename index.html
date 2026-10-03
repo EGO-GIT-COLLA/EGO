@@ -7179,6 +7179,15 @@ function _lastFollowTimeOf(c) {
     }
     return mx || c.updatedAt || c.createdAt || 0;
 }
+/* 最近新增的 N 条（按 createdAt 最新）固定置顶，其余随机打乱（加深记忆） */
+function _recentCreatedFirstThenShuffle(arr, topN) {
+    if (!Array.isArray(arr) || arr.length <= 1) return arr;
+    const n = Math.max(1, topN || 1);
+    const byCreated = arr.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const recent = byCreated.slice(0, n);
+    const rest = _seededShuffle(byCreated.slice(n), window.__listRandSeed);
+    return recent.concat(rest);
+}
 /* 按所选排序模式排列表格（random 由 _recentFirstThenShuffle 处理，这里返回原数组） */
 function _sortCustomers(list) {
     if (!Array.isArray(list) || list.length <= 1) return list;
@@ -8384,8 +8393,8 @@ function renderPropertyList() {
         return proHaystack(p).includes(kw);
     });
 
-    // 最近点开/新增的前几位固定在最前，其余随机打乱（每次打开随机，方便加深记忆）
-    filtered = _recentFirstThenShuffle(filtered, 1);
+    // 最近新增的5条固定置顶，其余随机打乱（每次打开随机，方便加深记忆）
+    filtered = _recentCreatedFirstThenShuffle(filtered, 5);
 
     const host = document.getElementById('proList');
     if (filtered.length === 0) {
