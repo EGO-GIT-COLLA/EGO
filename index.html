@@ -3682,6 +3682,7 @@ function proHaystack(p) {
     const parts = [
         p.title, p.owner, p.phone,
         p.price, p.size, p.note,
+        p.proArea, p.address, p.layout, p.type,
         tags.join(' '),
         isNaN(up) ? '' : up,
         isNaN(ror) ? '' : (ror.toFixed(2) + '%'),
@@ -7155,7 +7156,8 @@ function clearCusFilter() {
 
 function cusHaystack(c) {
     const tags = Array.isArray(c.tags) ? c.tags : [];
-    return [c.name, c.phone, c.note, tags.join(' ')].map(x => (x == null ? '' : String(x))).join(' ').toLowerCase();
+    return [c.name, c.phone, c.note, c.address, c.area, c.budget, c.intent, tags.join(' ')]
+        .map(x => (x == null ? '' : String(x))).join(' ').toLowerCase();
 }
 
 /* ===== 列表随机增强：最近点开/新增置顶，其余随机（每次打开随机、会话内稳定）===== */
