@@ -8377,10 +8377,42 @@ function renderPropertyMap() {
     const list = loadProperties();
     // 销毁旧地图（容器每次重建）
     if (__proLeafletMap) { try { __proLeafletMap.remove(); } catch (e) {} __proLeafletMap = null; __proLeafletMarkers = []; }
-    const mapped = list.filter(p => _hasCoords(p));
-    const unMapped = list.length - mapped.length;
+    // 应用当前列表筛选（与列表视图完全一致：总价OR、类型OR、其它标签AND、关键词AND）——地图模式搜索/筛选同样生效
+    let mapped = list.filter(p => _hasCoords(p));
+    if (proFilterPrices.size > 0) {
+        mapped = mapped.filter(p => {
+            const n = Number(p.totalPriceWan ?? p.price);
+            let hit = false;
+            for (const label of proFilterPrices) {
+                const target = PRO_PRICE_TAGS.find(x => x.label === label)
+                            || (typeof _gsParsePriceTagLabel === 'function' ? _gsParsePriceTagLabel(label) : null);
+                if (!target) continue;
+                if (!isNaN(n) && n >= 0 && (n >= target.min && (target.max === Infinity ? true : n < target.max))) { hit = true; break; }
+            }
+            return hit;
+        });
+    }
+    if (proFilterTypes.size > 0) {
+        mapped = mapped.filter(p => {
+            const pTags = new Set(p.tags || []);
+            if (p.type) pTags.add(p.type);
+            return Array.from(proFilterTypes).some(t => pTags.has(t));
+        });
+    }
+    if (proFilterTags.size > 0) {
+        mapped = mapped.filter(p => {
+            const pTags = new Set(p.tags || []);
+            return Array.from(proFilterTags).every(t => pTags.has(t));
+        });
+    }
+    const mapKw = safeStr(document.getElementById('proSearch').value).toLowerCase();
+    if (mapKw) mapped = mapped.filter(p => proHaystack(p).includes(mapKw));
+    const totalWithCoords = list.filter(p => _hasCoords(p)).length;
+    const unMapped = list.length - totalWithCoords;
+    const filterOn = (proFilterPrices.size > 0 || proFilterTypes.size > 0 || proFilterTags.size > 0 || mapKw);
     wrap.style.display = '';
-    wrap.innerHTML = '<div style="font-size:12px;color:var(--text-hint);margin:0 2px 8px;">🗺️ 地图视图：已定位 <b style="color:var(--tag-a);">' + mapped.length + '</b> / ' + list.length + ' 套房源，点标记看房源，点「查看详情」进详情' + (unMapped > 0 ? ' · <span style="color:#b26a00;">' + unMapped + ' 套未定位（录入/编辑时点「📡 获取当前位置定位」即可显示在地图）</span>' : '') + '</div>'
+    wrap.innerHTML = '<div style="font-size:12px;color:var(--text-hint);margin:0 2px 8px;line-height:1.7;">🗺️ 地图视图：显示 <b style="color:var(--tag-a);">' + mapped.length + '</b> / ' + list.length + ' 套房源' + (filterOn ? '（已按当前搜索/筛选过滤）' : '') + ' · 点标记看房源，点「查看详情」进详情'
+        + (unMapped > 0 ? '<br><span style="color:#b26a00;">⚠️ ' + unMapped + ' 套未定位，不会显示在地图（录入/编辑时点「📡 获取当前位置定位」即可）</span>' : '') + '</div>'
         + '<div id="proMapCanvas" style="height:62vh;border-radius:14px;overflow:hidden;border:1px solid var(--border);background:#e8eaed;z-index:0;"></div>'
         + '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;"><button class="btn btn-ghost" onclick="setProListMode(\'flat\')">← 返回列表</button></div>';
     if (typeof L === 'undefined') {
@@ -8418,9 +8450,15 @@ function renderPropertyMap() {
     });
     if (mapped.length > 0) {
         try {
-            const bounds = L.latLngBounds(mapped.filter(p => _hasCoords(p)).map(p => [Number(p.lat), Number(p.lng)]));
+            const bounds = L.latLngBounds(mapped.map(p => [Number(p.lat), Number(p.lng)]));
             __proLeafletMap.fitBounds(bounds, { padding: [36, 36], maxZoom: 15 });
         } catch (e) {}
+    } else if (filterOn) {
+        // 筛选后没有已定位的房源：保持广州视野并提示
+        try { __proLeafletMap.setView([23.13, 113.26], 11); } catch (e) {}
+        wrap.innerHTML = '<div style="font-size:12px;color:var(--text-hint);margin:0 2px 8px;">🗺️ 地图视图：显示 <b style="color:var(--tag-a);">0</b> / ' + list.length + ' 套房源（当前搜索/筛选下没有已定位的房源）</div>'
+            + '<div class="list-empty">当前筛选/关键词下没有可显示在地图的房源。<br>试试减少筛选条件，或返回「📋 列表」查看全部结果。</div>'
+            + '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;"><button class="btn btn-ghost" onclick="clearProFilter(); renderPropertyMap();">清空筛选</button><button class="btn btn-ghost" onclick="setProListMode(\'flat\')">← 返回列表</button></div>';
     }
     setTimeout(function () { if (__proLeafletMap) __proLeafletMap.invalidateSize(); }, 150);
 }
