@@ -2591,17 +2591,8 @@
         <!-- ========== Tab 4：备份 ========== -->
         <div id="tab-backup" class="tab-pane">
             <div class="section-title">
-                <h2>设置与备份</h2>
-                <div class="section-desc">皮肤主题 · 账号 · 数据备份</div>
-            </div>
-
-            <!-- 🖼️ 图片修复（跨设备图片缺失一键修复） -->
-            <div class="sub-card">
-                <div class="sub-title"><span>🖼️ 图片修复</span></div>
-                <p class="backup-desc" style="font-size:12px;margin:4px 0;">换设备后缩略图/图片缺失时，点此从云端自动补齐并上传修复。</p>
-                <div style="display:flex;gap:8px;margin-top:6px;">
-                    <button type="button" onclick="fixMissingImages()" style="flex:1;min-width:140px;padding:11px;border:none;border-radius:8px;background:var(--accent,#1677ff);color:#fff;font-size:13px;cursor:pointer;font-weight:600;">🖼️ 修复缺失图片</button>
-                </div>
+                <h2>我的</h2>
+                <div class="section-desc">皮肤 · 账号 · 数据同步</div>
             </div>
 
             <!-- 🎨 皮肤主题（默认折叠，点击展开） -->
@@ -2621,7 +2612,7 @@
 
                 <!-- 未登录 -->
                 <div id="authLoggedOut">
-                    <p class="backup-desc" style="font-size:12px;margin:4px 0;">登录后房源/客源/标签均绑定账号并加密备份到 GitHub，换设备登录同一账号即全部恢复；未登录不显示云端数据。</p>
+                    <p class="backup-desc" style="font-size:12px;margin:4px 0;">登录后数据自动备份到云端，换设备登录即全部恢复；未登录仅本地使用。</p>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
                         <div>
                             <label style="font-size:12px;color:var(--text-hint);">邮箱</label>
@@ -2633,7 +2624,7 @@
                         </div>
                     </div>
                     <details style="margin-top:8px;">
-                        <summary style="font-size:12px;color:var(--text-hint);cursor:pointer;outline:none;">可选：上传头像 / 手机号 / 昵称</summary>
+                        <summary style="font-size:12px;color:var(--text-hint);cursor:pointer;outline:none;">补充头像 / 手机号 / 昵称</summary>
                         <div style="display:flex;gap:10px;align-items:flex-start;margin-top:8px;">
                             <div style="flex-shrink:0;">
                                 <label style="font-size:12px;color:var(--text-hint);display:block;margin-bottom:3px;">头像</label>
@@ -2691,7 +2682,6 @@
                             </span>
                         </div>
                         <div class="row"><span class="k">最后同步</span><span class="v" id="lastSyncTime" style="font-size:11px;">从未同步</span></div>
-                        <div class="row"><span class="k">说明</span><span class="v" style="font-size:11px;color:var(--text-hint);">房源/客源/标签均按账号隔离备份，未登录仅可本地使用</span></div>
                     </div>
                 </div>
             </div>
@@ -2719,7 +2709,7 @@
                 <p class="backup-hint" id="sbHint" style="display:none;"></p>
                 <!-- 高级配置（已默认自动配置） -->
                 <details style="margin-top:10px;">
-                    <summary style="font-size:12px;color:var(--text-hint);cursor:pointer;outline:none;">⚙️ 高级：GitHub 云同步配置（数据保存在您的 GitHub 私有仓库，已默认配置好）</summary>
+                    <summary style="font-size:12px;color:var(--text-hint);cursor:pointer;outline:none;">⚙️ 高级：GitHub 云同步配置（已默认配置好）</summary>
                     <div style="display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px;">
                         <div>
                             <label style="font-size:12px;color:var(--text-hint);">GitHub 用户名</label>
@@ -2783,7 +2773,7 @@
             <button type="button" class="tab-btn" id="tabBtnCustomer" data-icon="👥" data-tab="customer" onclick="switchTab('customer')">客源</button>
             <button type="button" class="tab-btn active" data-icon="🔎" data-tab="search" onclick="switchTab('search')">搜索</button>
             <button type="button" class="tab-btn" data-icon="🏘️" data-tab="property" onclick="switchTab('property')">盘源</button>
-            <button type="button" class="tab-btn" data-icon="💾" data-tab="backup" onclick="switchTab('backup')">备份</button>
+            <button type="button" class="tab-btn" data-icon="👤" data-tab="backup" onclick="switchTab('backup')">我</button>
         </div>
     </div>
 </div>
