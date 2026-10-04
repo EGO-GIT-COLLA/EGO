@@ -4700,7 +4700,6 @@ function showPropertyPreview(p) {
     });
 }
 
-// ================= 房源分享 =================
 // 月租金（元/月）：兼容 rentType/rentValue 字段
 function monthlyRentYuanOf(p) {
     if (!p) return NaN;
@@ -4710,231 +4709,6 @@ function monthlyRentYuanOf(p) {
     if (rentType === 'monthly') return raw;
     return (raw * 10000) / 12;
 }
-// 分享文案：完整信息，不含维护人/维护电话
-function sharePropertyText(p) {
-    if (!p) return '';
-    const L = [];
-    L.push('🏠 ' + (p.title || '房源'));
-    const priceWan = Number(p.totalPriceWan ?? p.price);
-    if (!isNaN(priceWan) && priceWan > 0) L.push('💰 总价：' + fmtWan(priceWan) + ' 万元');
-    const sizeNum = Number(p.area ?? p.size);
-    if (!isNaN(sizeNum) && sizeNum > 0) L.push('📐 面积：' + sizeNum.toLocaleString('zh-CN') + ' ㎡');
-    const up = unitPrice(p.totalPriceWan ?? p.price, p.area ?? p.size);
-    if (up) L.push('💵 单价：' + up.toLocaleString('zh-CN') + ' 元/㎡');
-    if (p.type) L.push('🏢 物业类型：' + p.type);
-    if (p.layout) L.push('🛏️ 户型：' + p.layout);
-    if (p.address) L.push('📍 地址：' + p.address);
-    const mr = monthlyRentYuanOf(p);
-    if (!isNaN(mr)) L.push('💴 月租金：' + mr.toFixed(0) + ' 元');
-    const yr = yearlyRentWanOf(p);
-    if (!isNaN(yr)) L.push('📈 年租金：' + yr.toLocaleString('zh-CN', { maximumFractionDigits: 2 }) + ' 万元');
-    const ror = rateOfReturnPct(p);
-    if (!isNaN(ror)) L.push('📈 年回报率：' + ror.toFixed(2) + ' %');
-    if (p.note) L.push('📝 备注：' + p.note);
-    return L.join('\n');
-}
-function fallbackCopyText(text) {
-    try {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        const ok = document.execCommand('copy');
-        document.body.removeChild(ta);
-        return ok;
-    } catch (e) { return false; }
-}
-function copyTextToClipboard(text) {
-    return new Promise(function (resolve) {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(text).then(function () { resolve(true); }).catch(function () { resolve(fallbackCopyText(text)); });
-        } else {
-            resolve(fallbackCopyText(text));
-        }
-    });
-}
-// 分享：优先调起系统分享面板（微信/QQ等），不可用则复制文案
-function _loadImg(src) {
-    return new Promise(function (resolve) {
-        const img = new Image();
-        img.onload = function () { resolve(img); };
-        img.onerror = function () { resolve(null); };
-        img.src = src;
-    });
-}
-function _wrapText(ctx, text, maxWidth) {
-    const lines = [];
-    let cur = '';
-    for (const ch of String(text == null ? '' : text)) {
-        if (ctx.measureText(cur + ch).width > maxWidth) { lines.push(cur); cur = ch; }
-        else cur += ch;
-    }
-    if (cur) lines.push(cur);
-    return lines;
-}
-function _truncateText(ctx, val, maxW) {
-    let s = String(val == null ? '' : val);
-    while (ctx.measureText(s + '…').width > maxW && s.length > 1) s = s.slice(0, -1);
-    return s + '…';
-}
-// 生成分享卡片图（含房源首图 + 关键信息，不含维护人/电话/标签/来源）
-async function buildShareCard(p) {
-    const W = 750, PAD = 36;
-    const FONT = '"PingFang SC","Microsoft YaHei",sans-serif';
-    const rows = [];
-    const priceWan = Number(p.totalPriceWan ?? p.price);
-    if (!isNaN(priceWan) && priceWan > 0) rows.push(['总价', fmtWan(priceWan) + ' 万元']);
-    const sizeNum = Number(p.area ?? p.size);
-    if (!isNaN(sizeNum) && sizeNum > 0) rows.push(['面积', sizeNum.toLocaleString('zh-CN') + ' ㎡']);
-    const up = unitPrice(p.totalPriceWan ?? p.price, p.area ?? p.size);
-    if (up) rows.push(['单价', up.toLocaleString('zh-CN') + ' 元/㎡']);
-    if (p.type) rows.push(['物业类型', p.type]);
-    if (p.layout) rows.push(['户型', p.layout]);
-    if (p.address) rows.push(['地址', p.address]);
-    const mr = monthlyRentYuanOf(p);
-    if (!isNaN(mr)) rows.push(['月租金', mr.toFixed(0) + ' 元']);
-    const yr = yearlyRentWanOf(p);
-    if (!isNaN(yr)) rows.push(['年租金', yr.toLocaleString('zh-CN', { maximumFractionDigits: 2 }) + ' 万元']);
-    const ror = rateOfReturnPct(p);
-    if (!isNaN(ror)) rows.push(['年回报率', ror.toFixed(2) + ' %']);
-    const note = p.note ? String(p.note) : '';
-
-    const title = p.title || '房源';
-    const img = (p.images && p.images.length) ? await _loadImg(p.images[0]) : null;
-    const imgH = img ? Math.round(W * 2 / 3) : 260;
-
-    // 预计算行数（用于确定画布高度）
-    const tctx = document.createElement('canvas').getContext('2d');
-    tctx.font = 'bold 42px ' + FONT;
-    const titleLines = _wrapText(tctx, title, W - PAD * 2);
-    let noteLines = [];
-    if (note) {
-        tctx.font = '30px ' + FONT;
-        noteLines = _wrapText(tctx, note, W - PAD * 2 - 150);
-        if (noteLines.length > 3) { noteLines = noteLines.slice(0, 3); noteLines[2] += '…'; }
-    }
-    const H = imgH + 40 + titleLines.length * 58 + 30 + rows.length * 54 + (noteLines.length ? 28 + noteLines.length * 46 + 26 : 0) + 24;
-
-    const cv = document.createElement('canvas');
-    cv.width = W; cv.height = H;
-    const ctx = cv.getContext('2d');
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(0, 0, W, H);
-
-    // 首图（cover 裁切）
-    if (img) {
-        const ratio = Math.min(img.width / img.height, W / imgH);
-        const sw = img.width / ratio, sh = img.height / ratio;
-        ctx.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, 0, 0, W, imgH);
-    } else {
-        const g = ctx.createLinearGradient(0, 0, 0, imgH);
-        g.addColorStop(0, '#E9F1FB'); g.addColorStop(1, '#FFFFFF');
-        ctx.fillStyle = g; ctx.fillRect(0, 0, W, imgH);
-        ctx.fillStyle = '#B9CDE4'; ctx.font = '70px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('🏠', W / 2, imgH / 2 + 10);
-        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    }
-
-    let y = imgH + 40;
-    // 标题
-    ctx.fillStyle = '#1A1A1A';
-    ctx.font = 'bold 42px ' + FONT;
-    for (const ln of titleLines) { ctx.fillText(ln, PAD, y); y += 58; }
-    y += 10;
-    // 分隔线
-    ctx.strokeStyle = '#EEEEEE'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(PAD, y); ctx.lineTo(W - PAD, y); ctx.stroke();
-    y += 20;
-
-    // 信息行
-    ctx.font = '32px ' + FONT;
-    for (const kk of rows) {
-        const k = kk[0], v = kk[1];
-        ctx.fillStyle = '#8A8A8A';
-        ctx.fillText(k, PAD, y + 8);
-        ctx.fillStyle = '#222222';
-        let val = v;
-        if (ctx.measureText(val).width > W - PAD * 2 - 150) val = _truncateText(ctx, val, W - PAD * 2 - 150);
-        ctx.fillText(val, PAD + 150, y + 8);
-        y += 54;
-    }
-
-    // 备注
-    if (noteLines.length) {
-        ctx.strokeStyle = '#EEEEEE'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(PAD, y - 26); ctx.lineTo(W - PAD, y - 26); ctx.stroke();
-        y += 28;
-        ctx.fillStyle = '#8A8A8A'; ctx.font = '30px ' + FONT;
-        ctx.fillText('备注', PAD, y + 8);
-        ctx.fillStyle = '#222222';
-        for (const ln of noteLines) { ctx.fillText(ln, PAD + 150, y + 8); y += 46; }
-        y += 26;
-    }
-    y += 24;
-
-    return new Promise(function (resolve) {
-        cv.toBlob(function (b) { resolve(b); }, 'image/png');
-    });
-}
-function saveBlobToDevice(blob, filename) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 3000);
-}
-// 分享：一键生成分享图 → 系统分享面板（可存相册/发微信）→ 不可用时下载保存
-async function shareProperty(id) {
-    const p = (loadProperties() || []).find(x => x.id === id);
-    if (!p) return;
-    toast('🖼️ 正在生成分享图…');
-    try {
-        const blob = await buildShareCard(p);
-        const fname = '房源_' + String(p.title || '分享').slice(0, 18).replace(/[\/:*?"<>|\n\r]/g, '') + '.png';
-        const file = new File([blob], fname, { type: 'image/png' });
-        // 优先系统分享（iOS 可存照片/分享微信，安卓可分享到微信/相册）
-        if (navigator.share && navigator.canShare) {
-            const sd = { files: [file], title: '🏠 ' + (p.title || '房源') };
-            if (navigator.canShare(sd)) {
-                try { await navigator.share(sd); return; }
-                catch (e) { if (e && e.name === 'AbortError') return; }
-            }
-        }
-        // 兜底：直接下载保存（安卓存相册/下载；iPhone 打开后长按保存到相册）
-        saveBlobToDevice(blob, fname);
-        toast('✅ 分享图已保存（安卓在相册/下载目录；iPhone 长按图片保存到相册）');
-    } catch (e) {
-        console.warn('[share] 生成分享图失败：', e);
-        const text = sharePropertyText(p);
-        await copyTextToClipboard(text);
-        toast('⚠️ 生成图片失败，已复制文字信息');
-    }
-}
-// 打开分享链接：本地有直接弹窗；否则从公开数据 public.json 拉取该房源展示
-async function openSharedProperty(id) {
-    const local = (loadProperties() || []).find(x => x.id === id);
-    if (local) { showPropertyPreview(local); return; }
-    try {
-        const rec = await ghReadFile('public.json');
-        const arr = rec && rec.data && Array.isArray(rec.data.properties) ? rec.data.properties : [];
-        const p = arr.find(x => (x.id || x._id) === id);
-        if (p) showPropertyPreview(p);
-        else toast('未找到该房源');
-    } catch (e) { toast('加载分享房源失败，请检查网络'); }
-}
-function handleShareHash() {
-    try {
-        const h = decodeURIComponent(location.hash || '');
-        const m = h.match(/^#share=([^&]+)/);
-        if (m && m[1]) {
-            setTimeout(function () { openSharedProperty(decodeURIComponent(m[1])); }, 600);
-        }
-    } catch (e) {}
-}
-
 function _gsRemoveModal() {
     const m = document.getElementById('gsPreviewMask');
     if (m) m.remove();
@@ -8089,8 +7863,6 @@ async function editProperty(id) {
     }
     proImages = await resolveImages(Array.isArray(p.images) ? p.images : []);
     renderImagePreview(proImages, 'proImagePreview');
-    // 定位回填
-    updateProLocUI();
     renderProTagChips();
     // 切到录入子视图并滚到表单
     switchProView('form');
@@ -10206,7 +9978,6 @@ updateAuthUI();
                 .forEach(function (el) { el.parentNode && el.parentNode.removeChild(el); });
         } catch (e) {}
     }
-    handleShareHash();
     if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', rm); }
     else { rm(); }
     window.addEventListener('load', rm);
